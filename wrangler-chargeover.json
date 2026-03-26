@@ -1,0 +1,7 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "chargeover-proxy",
+	"main": "./workers/chargeover-proxy.js",
+	"compatibility_date": "2025-10-08",
+	"compatibility_flags": ["nodejs_compat"]
+}
