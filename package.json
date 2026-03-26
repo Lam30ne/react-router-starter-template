@@ -38,6 +38,8 @@
 		"cf-typegen": "wrangler types && react-router typegen",
 		"check": "tsc && react-router build && wrangler deploy --dry-run",
 		"deploy": "wrangler deploy",
+		"deploy:api-proxy": "wrangler deploy --config wrangler.api-proxy.json",
+		"dev:api-proxy": "wrangler dev --config wrangler.api-proxy.json",
 		"dev": "react-router dev",
 		"preview": "npm run build && vite preview",
 		"typecheck": "npm run typegen && tsc -b"
