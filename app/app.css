@@ -11,11 +11,11 @@ body {
   margin: 0;
   padding: 0;
   overflow: hidden;
-  background: #05050f;
+  background: #0f0a05;
   color-scheme: dark;
 }
 
-/* Smooth animation for ping */
+/* Breathing ping animation */
 @keyframes ping {
   75%,
   100% {
@@ -26,4 +26,53 @@ body {
 
 .animate-ping {
   animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+
+/* Range slider styling — minimal, warm */
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  width: 100px;
+  cursor: pointer;
+}
+
+.slider::-webkit-slider-track {
+  height: 2px;
+  background: rgba(251, 191, 36, 0.12);
+  border-radius: 1px;
+}
+
+.slider::-moz-range-track {
+  height: 2px;
+  background: rgba(251, 191, 36, 0.12);
+  border-radius: 1px;
+  border: none;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(251, 191, 36, 0.3);
+  margin-top: -5px;
+  transition: background 0.3s;
+}
+
+.slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(251, 191, 36, 0.3);
+  border: none;
+  transition: background 0.3s;
+}
+
+.slider:hover::-webkit-slider-thumb {
+  background: rgba(251, 191, 36, 0.5);
+}
+
+.slider:hover::-moz-range-thumb {
+  background: rgba(251, 191, 36, 0.5);
 }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback } from "react";
 import type { AudioEngine, AudioMode } from "./audio-engine";
+import { getTimeOfDayShift } from "./time-palette";
 
 interface Particle {
   x: number;
@@ -18,29 +19,38 @@ interface FlowField {
   rows: number;
   resolution: number;
   field: number[];
-  time: number;
 }
 
-const MODE_PALETTES: Record<AudioMode, { hueRange: [number, number]; saturation: number; brightness: number }> = {
-  calm: { hueRange: [200, 260], saturation: 60, brightness: 70 },    // Cool blues/purples
-  ground: { hueRange: [20, 60], saturation: 40, brightness: 60 },     // Warm earth tones
-  drift: { hueRange: [260, 320], saturation: 50, brightness: 65 },    // Deep purples/magentas
+// Warm palettes for parasympathetic activation
+// All modes use amber/earth hue range (15–55) — NO cool blues
+const MODE_PALETTES: Record<
+  AudioMode,
+  { hueRange: [number, number]; saturation: number; brightness: number }
+> = {
+  calm: { hueRange: [30, 50], saturation: 55, brightness: 65 }, // Amber/gold
+  ground: { hueRange: [15, 40], saturation: 45, brightness: 55 }, // Earth tones
+  drift: { hueRange: [25, 55], saturation: 40, brightness: 60 }, // Soft warm gold
 };
 
 export function VisualCanvas({
   audioEngine,
   isPlaying,
   mode,
+  brightness = 0.7,
 }: {
   audioEngine: AudioEngine | null;
   isPlaying: boolean;
   mode: AudioMode;
+  brightness?: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animFrameRef = useRef<number>(0);
   const particlesRef = useRef<Particle[]>([]);
   const flowFieldRef = useRef<FlowField | null>(null);
-  const timeRef = useRef(0);
+  const startTimeRef = useRef(performance.now());
+  const glowCacheRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
+  const timeShiftRef = useRef(getTimeOfDayShift());
+  const timeShiftFrameRef = useRef(0);
 
   const initFlowField = useCallback((width: number, height: number) => {
     const resolution = 20;
@@ -51,24 +61,96 @@ export function VisualCanvas({
       rows,
       resolution,
       field: new Array(cols * rows).fill(0),
-      time: 0,
     };
   }, []);
 
-  const createParticle = useCallback((width: number, height: number, palette: typeof MODE_PALETTES.calm): Particle => {
-    const hue = palette.hueRange[0] + Math.random() * (palette.hueRange[1] - palette.hueRange[0]);
-    return {
-      x: Math.random() * width,
-      y: Math.random() * height,
-      vx: 0,
-      vy: 0,
-      radius: 1 + Math.random() * 2.5,
-      hue,
-      alpha: 0,
-      life: 0,
-      maxLife: 300 + Math.random() * 500,
-    };
-  }, []);
+  const createParticle = useCallback(
+    (
+      width: number,
+      height: number,
+      palette: (typeof MODE_PALETTES)[AudioMode],
+    ): Particle => {
+      const hue =
+        palette.hueRange[0] +
+        Math.random() * (palette.hueRange[1] - palette.hueRange[0]);
+      return {
+        x: Math.random() * width,
+        y: Math.random() * height,
+        vx: 0,
+        vy: 0,
+        radius: 1 + Math.random() * 2.5,
+        hue,
+        alpha: 0,
+        life: 0,
+        maxLife: 300 + Math.random() * 500,
+      };
+    },
+    [],
+  );
+
+  // Cached glow sprite to avoid per-particle gradient creation
+  const getGlowSprite = useCallback(
+    (
+      radius: number,
+      hue: number,
+      saturation: number,
+      brightnessVal: number,
+      alpha: number,
+    ): HTMLCanvasElement => {
+      // Quantize for cache efficiency
+      const qRadius = Math.round(radius);
+      const qHue = Math.round(hue / 5) * 5;
+      const qAlpha = Math.round(alpha * 10) / 10;
+      const key = `${qRadius}-${qHue}-${saturation}-${qAlpha}`;
+
+      let cached = glowCacheRef.current.get(key);
+      if (cached) return cached;
+
+      const size = qRadius * 8 + 2;
+      const offscreen = document.createElement("canvas");
+      offscreen.width = size;
+      offscreen.height = size;
+      const offCtx = offscreen.getContext("2d");
+      if (!offCtx) return offscreen;
+
+      const cx = size / 2;
+
+      // Glow gradient
+      const gradient = offCtx.createRadialGradient(cx, cx, 0, cx, cx, qRadius * 4);
+      gradient.addColorStop(
+        0,
+        `hsla(${qHue}, ${saturation}%, ${brightnessVal}%, ${qAlpha * 0.8})`,
+      );
+      gradient.addColorStop(
+        0.5,
+        `hsla(${qHue}, ${saturation}%, ${brightnessVal}%, ${qAlpha * 0.2})`,
+      );
+      gradient.addColorStop(
+        1,
+        `hsla(${qHue}, ${saturation}%, ${brightnessVal}%, 0)`,
+      );
+
+      offCtx.beginPath();
+      offCtx.arc(cx, cx, qRadius * 4, 0, Math.PI * 2);
+      offCtx.fillStyle = gradient;
+      offCtx.fill();
+
+      // Core
+      offCtx.beginPath();
+      offCtx.arc(cx, cx, qRadius, 0, Math.PI * 2);
+      offCtx.fillStyle = `hsla(${qHue}, ${saturation - 10}%, ${brightnessVal + 20}%, ${qAlpha})`;
+      offCtx.fill();
+
+      glowCacheRef.current.set(key, offscreen);
+      return offscreen;
+    },
+    [],
+  );
+
+  useEffect(() => {
+    // Clear glow cache when mode changes (palette changes)
+    glowCacheRef.current.clear();
+  }, [mode]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -87,19 +169,42 @@ export function VisualCanvas({
 
     // Initialize particles
     const palette = MODE_PALETTES[mode];
-    const particleCount = Math.min(200, Math.floor((canvas.width * canvas.height) / 5000));
-    particlesRef.current = Array.from({ length: particleCount }, () =>
-      createParticle(canvas.width, canvas.height, palette)
+    const particleCount = Math.min(
+      200,
+      Math.floor((canvas.width * canvas.height) / 5000),
     );
+    particlesRef.current = Array.from({ length: particleCount }, () =>
+      createParticle(canvas.width, canvas.height, palette),
+    );
+
+    startTimeRef.current = performance.now();
 
     const animate = () => {
       const w = canvas.width;
       const h = canvas.height;
       const ff = flowFieldRef.current;
       const particles = particlesRef.current;
-      const pal = MODE_PALETTES[mode];
-      timeRef.current += 0.003;
-      const t = timeRef.current;
+      const basePal = MODE_PALETTES[mode];
+
+      // Recalculate time-of-day shift every ~60s (3600 frames at 60fps)
+      timeShiftFrameRef.current++;
+      if (timeShiftFrameRef.current % 3600 === 0) {
+        timeShiftRef.current = getTimeOfDayShift();
+      }
+      const timeShift = timeShiftRef.current;
+
+      // Apply time-of-day shift to palette
+      const pal = {
+        hueRange: [
+          basePal.hueRange[0] + timeShift.hueShift,
+          basePal.hueRange[1] + timeShift.hueShift,
+        ] as [number, number],
+        saturation: Math.round(basePal.saturation * timeShift.saturationMult),
+        brightness: Math.round(basePal.brightness * timeShift.brightnessMult),
+      };
+
+      const elapsedSeconds = (performance.now() - startTimeRef.current) / 1000;
+      const t = elapsedSeconds * 0.15; // Visual time for flow field
 
       // Audio reactivity
       let audioLevel = 0;
@@ -107,19 +212,22 @@ export function VisualCanvas({
         audioLevel = audioEngine.getAverageFrequency();
       }
 
-      // Semi-transparent overlay for trails
-      ctx.fillStyle = `rgba(5, 5, 15, ${0.06 + audioLevel * 0.02})`;
+      // Semi-transparent overlay for trails — warm dark base
+      ctx.fillStyle = `rgba(15, 10, 5, ${0.06 + audioLevel * 0.02})`;
       ctx.fillRect(0, 0, w, h);
+
+      // Center point for horizon principle
+      const centerX = w / 2;
+      const centerY = h / 2;
+      const maxDist = Math.sqrt(centerX * centerX + centerY * centerY);
 
       // Update flow field
       if (ff) {
-        ff.time = t;
         for (let y = 0; y < ff.rows; y++) {
           for (let x = 0; x < ff.cols; x++) {
             const idx = y * ff.cols + x;
             const nx = x * 0.02 + t * 0.5;
             const ny = y * 0.02 + t * 0.3;
-            // Perlin-like noise approximation using sine combinations
             ff.field[idx] =
               Math.sin(nx * 1.5 + ny * 0.8) * 2 +
               Math.sin(nx * 0.7 - ny * 1.3 + t) * 1.5 +
@@ -170,39 +278,44 @@ export function VisualCanvas({
 
         // Reset dead particles
         if (p.life >= p.maxLife) {
-          const newP = createParticle(w, h, pal);
-          particles[i] = newP;
+          particles[i] = createParticle(w, h, pal);
           continue;
         }
 
-        // Draw
-        const effectiveAlpha = p.alpha * (0.4 + audioLevel * 0.6);
+        // Horizon principle: attenuate by distance from center
+        const dx = p.x - centerX;
+        const dy = p.y - centerY;
+        const distFromCenter = Math.sqrt(dx * dx + dy * dy);
+        const horizonFactor = 1 - (distFromCenter / maxDist) * 0.6;
+
+        const effectiveAlpha =
+          p.alpha * (0.4 + audioLevel * 0.6) * horizonFactor * brightness;
         const effectiveRadius = p.radius * (1 + audioLevel * 1.5);
+        const effectiveSaturation = Math.round(
+          pal.saturation * (0.7 + horizonFactor * 0.3),
+        );
 
-        // Glow
-        const gradient = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, effectiveRadius * 4);
-        gradient.addColorStop(0, `hsla(${p.hue}, ${pal.saturation}%, ${pal.brightness}%, ${effectiveAlpha * 0.8})`);
-        gradient.addColorStop(0.5, `hsla(${p.hue}, ${pal.saturation}%, ${pal.brightness}%, ${effectiveAlpha * 0.2})`);
-        gradient.addColorStop(1, `hsla(${p.hue}, ${pal.saturation}%, ${pal.brightness}%, 0)`);
-
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, effectiveRadius * 4, 0, Math.PI * 2);
-        ctx.fillStyle = gradient;
-        ctx.fill();
-
-        // Core
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, effectiveRadius, 0, Math.PI * 2);
-        ctx.fillStyle = `hsla(${p.hue}, ${pal.saturation - 10}%, ${pal.brightness + 20}%, ${effectiveAlpha})`;
-        ctx.fill();
+        // Draw cached glow sprite
+        const sprite = getGlowSprite(
+          effectiveRadius,
+          p.hue + timeShift.hueShift,
+          effectiveSaturation,
+          pal.brightness,
+          effectiveAlpha,
+        );
+        ctx.drawImage(
+          sprite,
+          p.x - sprite.width / 2,
+          p.y - sprite.height / 2,
+        );
       }
 
       // Slow aurora/nebula overlay
-      drawAurora(ctx, w, h, t, pal, audioLevel);
+      drawAurora(ctx, w, h, t, pal, audioLevel, brightness);
 
       // Central breathing circle
       if (isPlaying) {
-        drawBreathingCircle(ctx, w, h, t, pal, audioLevel);
+        drawBreathingCircle(ctx, w, h, elapsedSeconds, pal, audioLevel, brightness);
       }
 
       animFrameRef.current = requestAnimationFrame(animate);
@@ -214,13 +327,13 @@ export function VisualCanvas({
       window.removeEventListener("resize", resize);
       cancelAnimationFrame(animFrameRef.current);
     };
-  }, [isPlaying, mode, audioEngine, initFlowField, createParticle]);
+  }, [isPlaying, mode, audioEngine, brightness, initFlowField, createParticle, getGlowSprite]);
 
   return (
     <canvas
       ref={canvasRef}
       className="fixed inset-0 w-full h-full"
-      style={{ background: "#05050f" }}
+      style={{ background: "#0f0a05" }}
     />
   );
 }
@@ -230,16 +343,19 @@ function drawAurora(
   w: number,
   h: number,
   t: number,
-  palette: typeof MODE_PALETTES.calm,
+  palette: { hueRange: [number, number]; saturation: number; brightness: number },
   audioLevel: number,
+  brightnessMultiplier: number,
 ) {
   ctx.save();
   ctx.globalCompositeOperation = "screen";
-  ctx.globalAlpha = 0.04 + audioLevel * 0.03;
+  ctx.globalAlpha = (0.04 + audioLevel * 0.03) * brightnessMultiplier;
 
   for (let i = 0; i < 3; i++) {
     const yBase = h * (0.3 + i * 0.15);
-    const hue = palette.hueRange[0] + (palette.hueRange[1] - palette.hueRange[0]) * (i / 3);
+    const hue =
+      palette.hueRange[0] +
+      ((palette.hueRange[1] - palette.hueRange[0]) * i) / 3;
 
     ctx.beginPath();
     ctx.moveTo(0, yBase);
@@ -258,9 +374,18 @@ function drawAurora(
     ctx.closePath();
 
     const grad = ctx.createLinearGradient(0, yBase - 100, 0, yBase + 200);
-    grad.addColorStop(0, `hsla(${hue}, ${palette.saturation}%, ${palette.brightness}%, 0)`);
-    grad.addColorStop(0.3, `hsla(${hue}, ${palette.saturation}%, ${palette.brightness}%, 0.3)`);
-    grad.addColorStop(1, `hsla(${hue}, ${palette.saturation}%, ${palette.brightness}%, 0)`);
+    grad.addColorStop(
+      0,
+      `hsla(${hue}, ${palette.saturation}%, ${palette.brightness}%, 0)`,
+    );
+    grad.addColorStop(
+      0.3,
+      `hsla(${hue}, ${palette.saturation}%, ${palette.brightness}%, 0.3)`,
+    );
+    grad.addColorStop(
+      1,
+      `hsla(${hue}, ${palette.saturation}%, ${palette.brightness}%, 0)`,
+    );
     ctx.fillStyle = grad;
     ctx.fill();
   }
@@ -272,27 +397,46 @@ function drawBreathingCircle(
   ctx: CanvasRenderingContext2D,
   w: number,
   h: number,
-  t: number,
-  palette: typeof MODE_PALETTES.calm,
+  elapsedSeconds: number,
+  palette: { hueRange: [number, number]; saturation: number; brightness: number },
   audioLevel: number,
+  brightnessMultiplier: number,
 ) {
   const cx = w / 2;
   const cy = h / 2;
 
-  // Breathing rhythm ~6 breaths per minute
-  const breathPhase = Math.sin(t * 3.14); // ~6 BPM
+  // 5.5 breaths per minute — within 5–7 BPM therapeutic range
+  const BREATHS_PER_MINUTE = 5.5;
+  const breathPhase = Math.sin(
+    elapsedSeconds * ((2 * Math.PI * BREATHS_PER_MINUTE) / 60),
+  );
+
   const baseRadius = Math.min(w, h) * 0.08;
   const radius = baseRadius * (0.8 + breathPhase * 0.2 + audioLevel * 0.3);
 
   ctx.save();
   ctx.globalCompositeOperation = "screen";
 
-  // Outer glow
-  const outerGrad = ctx.createRadialGradient(cx, cy, radius * 0.5, cx, cy, radius * 3);
   const hue = (palette.hueRange[0] + palette.hueRange[1]) / 2;
-  outerGrad.addColorStop(0, `hsla(${hue}, ${palette.saturation}%, ${palette.brightness}%, ${0.06 + audioLevel * 0.04})`);
-  outerGrad.addColorStop(0.5, `hsla(${hue}, ${palette.saturation}%, ${palette.brightness}%, ${0.02 + audioLevel * 0.02})`);
-  outerGrad.addColorStop(1, `hsla(${hue}, ${palette.saturation}%, ${palette.brightness}%, 0)`);
+
+  // Outer glow
+  const outerGrad = ctx.createRadialGradient(
+    cx, cy, radius * 0.5,
+    cx, cy, radius * 3,
+  );
+  const outerAlpha = (0.06 + audioLevel * 0.04) * brightnessMultiplier;
+  outerGrad.addColorStop(
+    0,
+    `hsla(${hue}, ${palette.saturation}%, ${palette.brightness}%, ${outerAlpha})`,
+  );
+  outerGrad.addColorStop(
+    0.5,
+    `hsla(${hue}, ${palette.saturation}%, ${palette.brightness}%, ${outerAlpha * 0.33})`,
+  );
+  outerGrad.addColorStop(
+    1,
+    `hsla(${hue}, ${palette.saturation}%, ${palette.brightness}%, 0)`,
+  );
 
   ctx.beginPath();
   ctx.arc(cx, cy, radius * 3, 0, Math.PI * 2);
@@ -301,9 +445,19 @@ function drawBreathingCircle(
 
   // Inner core
   const innerGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
-  innerGrad.addColorStop(0, `hsla(${hue}, ${palette.saturation - 20}%, ${palette.brightness + 20}%, ${0.15 + audioLevel * 0.1})`);
-  innerGrad.addColorStop(0.7, `hsla(${hue}, ${palette.saturation}%, ${palette.brightness}%, ${0.05 + audioLevel * 0.05})`);
-  innerGrad.addColorStop(1, `hsla(${hue}, ${palette.saturation}%, ${palette.brightness}%, 0)`);
+  const innerAlpha = (0.15 + audioLevel * 0.1) * brightnessMultiplier;
+  innerGrad.addColorStop(
+    0,
+    `hsla(${hue}, ${palette.saturation - 20}%, ${palette.brightness + 20}%, ${innerAlpha})`,
+  );
+  innerGrad.addColorStop(
+    0.7,
+    `hsla(${hue}, ${palette.saturation}%, ${palette.brightness}%, ${innerAlpha * 0.33})`,
+  );
+  innerGrad.addColorStop(
+    1,
+    `hsla(${hue}, ${palette.saturation}%, ${palette.brightness}%, 0)`,
+  );
 
   ctx.beginPath();
   ctx.arc(cx, cy, radius, 0, Math.PI * 2);

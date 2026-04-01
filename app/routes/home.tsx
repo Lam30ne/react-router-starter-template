@@ -6,11 +6,11 @@ import { Controls } from "../components/controls";
 
 export function meta({}: Route.MetaArgs) {
   return [
-    { title: "Regulate - Nervous System Music & Visuals" },
+    { title: "Regulate — Nervous System Music & Visuals" },
     {
       name: "description",
       content:
-        "Binaural beats, ambient drones, and flowing visuals for nervous system regulation",
+        "Binaural beats, warm drones, and flowing visuals for nervous system regulation",
     },
   ];
 }
@@ -18,6 +18,8 @@ export function meta({}: Route.MetaArgs) {
 export default function Home() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [mode, setMode] = useState<AudioMode>("calm");
+  const [volume, setVolume] = useState(0.7);
+  const [brightness, setBrightness] = useState(0.7);
   const [showUI, setShowUI] = useState(true);
   const audioRef = useRef<AudioEngine | null>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout>>(null);
@@ -35,34 +37,48 @@ export default function Home() {
       if (audioRef.current) {
         await audioRef.current.stop();
       }
+      audioRef.current = null;
       setIsPlaying(false);
       setShowUI(true);
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     } else {
       const engine = new AudioEngine();
       audioRef.current = engine;
+      engine.setVolume(volume);
       await engine.start(mode);
       setIsPlaying(true);
       hideTimerRef.current = setTimeout(() => setShowUI(false), 5000);
     }
-  }, [isPlaying, mode]);
+  }, [isPlaying, mode, volume]);
 
   const handleModeChange = useCallback(
     async (newMode: AudioMode) => {
       setMode(newMode);
       if (isPlaying && audioRef.current) {
-        await audioRef.current.stop();
-        const engine = new AudioEngine();
-        audioRef.current = engine;
-        await engine.start(newMode);
+        // Smooth crossfade — no silence gap
+        await audioRef.current.crossfadeTo(newMode);
       }
     },
     [isPlaying],
   );
 
+  const handleVolumeChange = useCallback(
+    (level: number) => {
+      setVolume(level);
+      if (audioRef.current) {
+        audioRef.current.setVolume(level);
+      }
+    },
+    [],
+  );
+
+  const handleBrightnessChange = useCallback((level: number) => {
+    setBrightness(level);
+  }, []);
+
   return (
     <div
-      className="fixed inset-0 overflow-hidden cursor-none select-none"
+      className="fixed inset-0 overflow-hidden select-none"
       onMouseMove={resetHideTimer}
       onTouchStart={resetHideTimer}
       style={{ cursor: showUI ? "default" : "none" }}
@@ -71,16 +87,17 @@ export default function Home() {
         audioEngine={audioRef.current}
         isPlaying={isPlaying}
         mode={mode}
+        brightness={brightness}
       />
 
       {/* Title */}
       <div
         className={`fixed top-0 left-0 right-0 z-10 flex flex-col items-center pt-8 pb-16 bg-gradient-to-b from-black/40 to-transparent transition-opacity duration-1000 ${showUI ? "opacity-100" : "opacity-0 pointer-events-none"}`}
       >
-        <h1 className="text-white/50 text-lg font-extralight tracking-[0.3em] uppercase">
+        <h1 className="text-amber-50/40 text-lg font-extralight tracking-[0.3em] uppercase">
           Regulate
         </h1>
-        <p className="text-white/20 text-xs font-light tracking-wider mt-1">
+        <p className="text-amber-100/20 text-xs font-light tracking-wider mt-1">
           Nervous system music + visuals
         </p>
       </div>
@@ -92,8 +109,12 @@ export default function Home() {
         <Controls
           isPlaying={isPlaying}
           mode={mode}
+          volume={volume}
+          brightness={brightness}
           onToggle={handleToggle}
           onModeChange={handleModeChange}
+          onVolumeChange={handleVolumeChange}
+          onBrightnessChange={handleBrightnessChange}
         />
       </div>
     </div>
