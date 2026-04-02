@@ -58,6 +58,16 @@ export default function App() {
 	return <Outlet />;
 }
 
+// Debug: catch client-side errors
+if (typeof window !== "undefined") {
+	window.addEventListener("error", (e) => {
+		document.body.innerHTML = `<pre style="color:white;background:#0f0a05;padding:2rem;font-size:12px;white-space:pre-wrap">${e.message}\n${e.filename}:${e.lineno}</pre>`;
+	});
+	window.addEventListener("unhandledrejection", (e) => {
+		document.body.innerHTML = `<pre style="color:white;background:#0f0a05;padding:2rem;font-size:12px;white-space:pre-wrap">Promise: ${e.reason}</pre>`;
+	});
+}
+
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
 	const is404 = isRouteErrorResponse(error) && error.status === 404;
 
