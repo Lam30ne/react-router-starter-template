@@ -12,6 +12,9 @@ export function meta({}: Route.MetaArgs) {
       content:
         "Binaural beats, warm drones, and flowing visuals for nervous system regulation",
     },
+    { name: "apple-mobile-web-app-capable", content: "yes" },
+    { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
+    { name: "theme-color", content: "#0f0a05" },
   ];
 }
 
@@ -89,6 +92,14 @@ export default function Home() {
     setBrightness(level);
   }, []);
 
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen?.().catch(() => {});
+    } else {
+      document.exitFullscreen?.().catch(() => {});
+    }
+  }, []);
+
   return (
     <div
       className="fixed inset-0 overflow-hidden select-none"
@@ -107,14 +118,26 @@ export default function Home() {
 
       {/* Title */}
       <header
-        className={`fixed top-0 left-0 right-0 z-10 flex flex-col items-center pt-4 sm:pt-8 pb-8 sm:pb-16 bg-gradient-to-b from-black/40 to-transparent transition-opacity duration-1000 ${showUI ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+        className={`fixed top-0 left-0 right-0 z-10 flex items-start justify-between pt-4 sm:pt-8 pb-8 sm:pb-16 px-4 sm:px-8 bg-gradient-to-b from-black/40 to-transparent transition-opacity duration-1000 ${showUI ? "opacity-100" : "opacity-0 pointer-events-none"}`}
       >
-        <h1 className="text-amber-50/70 text-base sm:text-lg font-extralight tracking-[0.3em] uppercase">
-          Regulate
-        </h1>
-        <p className="text-amber-100/55 text-xs font-light tracking-wider mt-1">
-          Nervous system music + visuals
-        </p>
+        <div className="w-10" />
+        <div className="flex flex-col items-center">
+          <h1 className="text-amber-50/70 text-base sm:text-lg font-extralight tracking-[0.3em] uppercase">
+            Regulate
+          </h1>
+          <p className="text-amber-100/55 text-xs font-light tracking-wider mt-1">
+            Nervous system music + visuals
+          </p>
+        </div>
+        <button
+          onClick={(e) => { e.stopPropagation(); toggleFullscreen(); }}
+          className="w-10 h-10 flex items-center justify-center rounded-full text-amber-100/50 hover:text-amber-100/80 hover:bg-white/5 transition-all duration-300 focus-visible:ring-2 focus-visible:ring-amber-200/60 focus-visible:outline-none"
+          aria-label="Toggle fullscreen"
+        >
+          <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M1 6V1h5M17 6V1h-5M1 12v5h5M17 12v5h-5" />
+          </svg>
+        </button>
       </header>
 
       {/* Controls */}
