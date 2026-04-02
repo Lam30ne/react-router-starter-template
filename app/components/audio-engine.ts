@@ -436,17 +436,36 @@ export class AudioEngine {
       this.masterGain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 2);
     }
 
-    // Schedule cleanup after fade-out (non-blocking)
-    const cleanup = () => {
-      this.teardownNodes();
-      // Suspend instead of close — reuse on next play
-      if (this.ctx) {
-        this.ctx.suspend().catch(() => {});
-      }
-    };
+    // Capture current nodes so delayed cleanup doesn't touch new ones
+    const nodesToClean = this.nodes;
+    const oscsToClean = this.oscillators;
+    const analyserToClean = this.analyser;
+    const gainToClean = this.masterGain;
+    const ctxToSuspend = this.ctx;
 
-    setTimeout(cleanup, 2100);
+    // Clear instance state immediately
+    this.nodes = [];
+    this.oscillators = [];
+    this.analyser = null;
+    this.masterGain = null;
     this.isPlaying = false;
+
+    // Schedule cleanup after fade-out (non-blocking)
+    setTimeout(() => {
+      for (const osc of oscsToClean) {
+        try { osc.stop(); } catch {}
+      }
+      for (const node of nodesToClean) {
+        try { node.disconnect(); } catch {}
+      }
+      if (analyserToClean) {
+        try { analyserToClean.disconnect(); } catch {}
+      }
+      if (gainToClean) {
+        try { gainToClean.disconnect(); } catch {}
+      }
+      ctxToSuspend.suspend().catch(() => {});
+    }, 2100);
   }
 
   getIsPlaying() {
