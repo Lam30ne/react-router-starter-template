@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import type { Route } from "./+types/home";
 import { AudioEngine, type AudioMode } from "../components/audio-engine";
 import { VisualCanvas } from "../components/visual-canvas";
@@ -24,6 +24,14 @@ export default function Home() {
   const audioRef = useRef<AudioEngine | null>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout>>(null);
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+      audioRef.current?.dispose();
+    };
+  }, []);
+
   const resetHideTimer = useCallback(() => {
     setShowUI(true);
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
@@ -34,28 +42,28 @@ export default function Home() {
 
   const handleToggle = useCallback(async () => {
     if (isPlaying) {
-      if (audioRef.current) {
-        await audioRef.current.stop();
-      }
-      audioRef.current = null;
+      // Optimistic: update UI immediately, fade audio in background
       setIsPlaying(false);
       setShowUI(true);
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+      audioRef.current?.stop();
     } else {
-      const engine = new AudioEngine();
-      audioRef.current = engine;
-      engine.setVolume(volume);
-      await engine.start(mode);
+      if (!audioRef.current) {
+        audioRef.current = new AudioEngine();
+      }
+      audioRef.current.setVolume(volume);
+      await audioRef.current.start(mode);
       setIsPlaying(true);
       hideTimerRef.current = setTimeout(() => setShowUI(false), 5000);
     }
   }, [isPlaying, mode, volume]);
 
   const handleModeChange = useCallback(
-    async (newMode: AudioMode) => {
+    (newMode: AudioMode) => {
+      // Optimistic: update mode in UI immediately
       setMode(newMode);
       if (isPlaying && audioRef.current) {
-        await audioRef.current.crossfadeTo(newMode);
+        audioRef.current.crossfadeTo(newMode);
       }
     },
     [isPlaying],
@@ -63,9 +71,7 @@ export default function Home() {
 
   const handleVolumeChange = useCallback((level: number) => {
     setVolume(level);
-    if (audioRef.current) {
-      audioRef.current.setVolume(level);
-    }
+    audioRef.current?.setVolume(level);
   }, []);
 
   const handleBrightnessChange = useCallback((level: number) => {

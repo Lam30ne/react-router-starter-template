@@ -1,6 +1,7 @@
+import { memo } from "react";
 import { MODES, type AudioMode } from "./audio-engine";
 
-export function Controls({
+export const Controls = memo(function Controls({
   isPlaying,
   mode,
   volume,
@@ -110,4 +111,4 @@ export function Controls({
       )}
     </div>
   );
-}
+});
