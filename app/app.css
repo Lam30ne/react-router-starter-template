@@ -1,16 +1,86 @@
 @import "tailwindcss" source(".");
 
 @theme {
-	--font-sans:
-		"Inter", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji",
-		"Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-sans:
+    "Inter", ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji",
+    "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 }
 
 html,
 body {
-	@apply bg-white dark:bg-gray-950;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: #0f0a05;
+  color-scheme: dark;
+}
 
-	@media (prefers-color-scheme: dark) {
-		color-scheme: dark;
-	}
+/* Breathing ping animation — respects reduced motion */
+@keyframes ping {
+  75%,
+  100% {
+    transform: scale(2);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .animate-ping {
+    animation: ping 2s cubic-bezier(0, 0, 0.2, 1) infinite;
+  }
+}
+
+/* Range slider styling — accessible, warm */
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  width: clamp(70px, 20vw, 120px);
+  cursor: pointer;
+}
+
+.slider::-webkit-slider-track {
+  height: 4px;
+  background: rgba(251, 191, 36, 0.25);
+  border-radius: 2px;
+}
+
+.slider::-moz-range-track {
+  height: 4px;
+  background: rgba(251, 191, 36, 0.25);
+  border-radius: 2px;
+  border: none;
+}
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(251, 191, 36, 0.5);
+  margin-top: -8px;
+  transition: background 0.3s;
+}
+
+.slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(251, 191, 36, 0.5);
+  border: none;
+  transition: background 0.3s;
+}
+
+.slider:hover::-webkit-slider-thumb {
+  background: rgba(251, 191, 36, 0.7);
+}
+
+.slider:hover::-moz-range-thumb {
+  background: rgba(251, 191, 36, 0.7);
+}
+
+.slider:focus-visible {
+  outline: 2px solid rgba(251, 191, 36, 0.6);
+  outline-offset: 4px;
+  border-radius: 4px;
 }
