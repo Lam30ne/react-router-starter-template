@@ -48,7 +48,7 @@ function createParticle(
     y: Math.random() * height,
     vx: 0,
     vy: 0,
-    radius: 1 + Math.random() * 2.5,
+    radius: 1.5 + Math.random() * 3.5,
     hue,
     alpha: 0,
     life: 0,
@@ -120,8 +120,8 @@ export function VisualCanvas({
 
     const initParticles = (w: number, h: number) => {
       const palette = MODE_PALETTES[modeRef.current];
-      const fullCount = Math.min(200, Math.floor((w * h) / 5000));
-      const count = reducedMotion ? Math.min(30, fullCount) : mobile ? Math.min(80, fullCount) : fullCount;
+      const fullCount = Math.min(300, Math.floor((w * h) / 3500));
+      const count = reducedMotion ? Math.min(40, fullCount) : mobile ? Math.min(120, fullCount) : fullCount;
       particles = Array.from({ length: count }, () => createParticle(w, h, palette));
       glowCache.clear();
       startTime = performance.now();
@@ -286,10 +286,10 @@ export function VisualCanvas({
         const dx = p.x - centerX;
         const dy = p.y - centerY;
         const distFromCenter = Math.sqrt(dx * dx + dy * dy);
-        const horizonFactor = 1 - (distFromCenter / maxDist) * 0.6;
+        const horizonFactor = 1 - (distFromCenter / maxDist) * 0.3;
 
         const effectiveAlpha =
-          p.alpha * (0.4 + audioLevel * 0.6) * horizonFactor * curBrightness;
+          p.alpha * (0.55 + audioLevel * 0.45) * horizonFactor * curBrightness;
         const effectiveRadius = p.radius * (1 + audioLevel * 1.5);
         const effectiveSaturation = Math.round(
           pal.saturation * (0.7 + horizonFactor * 0.3),
@@ -401,7 +401,7 @@ function drawBreathingCircle(
     elapsedSeconds * ((2 * Math.PI * BREATHS_PER_MINUTE) / 60),
   );
 
-  const baseRadius = Math.min(w, h) * 0.08;
+  const baseRadius = Math.min(w, h) * 0.12;
   const radius = baseRadius * (0.8 + breathPhase * 0.2 + audioLevel * 0.3);
 
   ctx.save();

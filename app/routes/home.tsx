@@ -32,6 +32,17 @@ export default function Home() {
     };
   }, []);
 
+  const toggleUI = useCallback(() => {
+    setShowUI((prev) => {
+      const next = !prev;
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+      if (next && isPlaying) {
+        hideTimerRef.current = setTimeout(() => setShowUI(false), 5000);
+      }
+      return next;
+    });
+  }, [isPlaying]);
+
   const resetHideTimer = useCallback(() => {
     setShowUI(true);
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
@@ -82,7 +93,7 @@ export default function Home() {
     <div
       className="fixed inset-0 overflow-hidden select-none"
       onMouseMove={resetHideTimer}
-      onTouchStart={resetHideTimer}
+      onClick={toggleUI}
       onKeyDown={resetHideTimer}
       onFocusCapture={resetHideTimer}
       style={{ cursor: showUI ? "default" : "none" }}
