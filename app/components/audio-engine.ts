@@ -81,7 +81,7 @@ export class AudioEngine {
     }
 
     const config = MODES[mode];
-    const targetGain = this.volumeLevel * 0.5;
+    const targetGain = this.volumeLevel * 0.8;
 
     // Master gain with slow fade in
     this.masterGain = ctx.createGain();
@@ -405,7 +405,7 @@ export class AudioEngine {
     this.volumeLevel = Math.max(0, Math.min(1, level));
     if (this.ctx && this.masterGain) {
       this.masterGain.gain.linearRampToValueAtTime(
-        this.volumeLevel * 0.5,
+        this.volumeLevel * 0.8,
         this.ctx.currentTime + 0.3,
       );
     }
