@@ -58,16 +58,6 @@ export default function App() {
 	return <Outlet />;
 }
 
-// Debug: catch client-side errors
-if (typeof window !== "undefined") {
-	window.addEventListener("error", (e) => {
-		document.body.innerHTML = `<pre style="color:white;background:#0f0a05;padding:2rem;font-size:12px;white-space:pre-wrap">${e.message}\n${e.filename}:${e.lineno}</pre>`;
-	});
-	window.addEventListener("unhandledrejection", (e) => {
-		document.body.innerHTML = `<pre style="color:white;background:#0f0a05;padding:2rem;font-size:12px;white-space:pre-wrap">Promise: ${e.reason}</pre>`;
-	});
-}
-
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
 	const is404 = isRouteErrorResponse(error) && error.status === 404;
 
@@ -91,7 +81,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
 						: "Take a breath. These things happen. Let's start fresh."}
 				</p>
 				<a
-					href="/"
+					href="/react-router-starter-template/"
 					className="inline-block px-6 py-3 rounded-full bg-amber-200/8 text-amber-100/70 text-sm font-light tracking-wider border border-amber-200/25 hover:bg-amber-200/12 transition-all duration-500 focus-visible:ring-2 focus-visible:ring-amber-200/40 focus-visible:outline-none"
 				>
 					Return home

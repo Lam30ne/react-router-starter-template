@@ -27,6 +27,7 @@ jobs:
 
       - run: npm ci
       - run: npm run build
+      - run: touch build/client/.nojekyll
 
       - uses: actions/configure-pages@v5
 
