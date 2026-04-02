@@ -15,11 +15,17 @@ export function meta({}: Route.MetaArgs) {
   ];
 }
 
+function isMobile(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.innerWidth < 768 || navigator.hardwareConcurrency <= 4;
+}
+
 export default function Home() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [mode, setMode] = useState<AudioMode>("calm");
   const [volume, setVolume] = useState(0.7);
   const [brightness, setBrightness] = useState(0.7);
+  const [visualIntensity] = useState(() => (isMobile() ? 0.5 : 0.65));
   const [showUI, setShowUI] = useState(true);
   const audioRef = useRef<AudioEngine | null>(null);
   const hideTimerRef = useRef<ReturnType<typeof setTimeout>>(null);
@@ -86,6 +92,7 @@ export default function Home() {
         isPlaying={isPlaying}
         mode={mode}
         brightness={brightness}
+        visualIntensity={visualIntensity}
       />
 
       {/* Title */}
