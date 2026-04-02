@@ -41,6 +41,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
 	);
 }
 
+export function HydrateFallback() {
+	return (
+		<div
+			className="fixed inset-0 flex flex-col items-center justify-center"
+			style={{ background: "#0f0a05" }}
+		>
+			<p className="text-amber-100/70 text-lg font-extralight tracking-[0.3em] uppercase animate-pulse">
+				Loading...
+			</p>
+		</div>
+	);
+}
+
 export default function App() {
 	return <Outlet />;
 }
