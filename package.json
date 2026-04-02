@@ -2,6 +2,7 @@
 	"name": "regulate",
 	"description": "Nervous system regulation app with binaural beats and flowing visuals.",
 	"dependencies": {
+		"@react-router/node": "^7.13.2",
 		"isbot": "5.1.32",
 		"react": "^19.0.0",
 		"react-dom": "^19.0.0",
