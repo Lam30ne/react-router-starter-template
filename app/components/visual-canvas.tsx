@@ -51,6 +51,9 @@ export function VisualCanvas({
   const glowCacheRef = useRef<Map<string, HTMLCanvasElement>>(new Map());
   const timeShiftRef = useRef(getTimeOfDayShift());
   const timeShiftFrameRef = useRef(0);
+  const prefersReducedMotion =
+    typeof window !== "undefined" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   const initFlowField = useCallback((width: number, height: number) => {
     const resolution = 20;
@@ -167,12 +170,13 @@ export function VisualCanvas({
     resize();
     window.addEventListener("resize", resize);
 
-    // Initialize particles
+    // Initialize particles — fewer if user prefers reduced motion
     const palette = MODE_PALETTES[mode];
-    const particleCount = Math.min(
+    const fullCount = Math.min(
       200,
       Math.floor((canvas.width * canvas.height) / 5000),
     );
+    const particleCount = prefersReducedMotion ? Math.min(30, fullCount) : fullCount;
     particlesRef.current = Array.from({ length: particleCount }, () =>
       createParticle(canvas.width, canvas.height, palette),
     );
@@ -204,7 +208,8 @@ export function VisualCanvas({
       };
 
       const elapsedSeconds = (performance.now() - startTimeRef.current) / 1000;
-      const t = elapsedSeconds * 0.15; // Visual time for flow field
+      // Slow down flow field significantly for reduced motion
+      const t = elapsedSeconds * (prefersReducedMotion ? 0.03 : 0.15);
 
       // Audio reactivity
       let audioLevel = 0;
@@ -310,12 +315,18 @@ export function VisualCanvas({
         );
       }
 
-      // Slow aurora/nebula overlay
-      drawAurora(ctx, w, h, t, pal, audioLevel, brightness);
+      // Slow aurora/nebula overlay — skip in reduced motion
+      if (!prefersReducedMotion) {
+        drawAurora(ctx, w, h, t, pal, audioLevel, brightness);
+      }
 
-      // Central breathing circle
+      // Central breathing circle — keep in reduced motion but without audio reactivity
       if (isPlaying) {
-        drawBreathingCircle(ctx, w, h, elapsedSeconds, pal, audioLevel, brightness);
+        drawBreathingCircle(
+          ctx, w, h, elapsedSeconds, pal,
+          prefersReducedMotion ? 0 : audioLevel,
+          brightness,
+        );
       }
 
       animFrameRef.current = requestAnimationFrame(animate);
@@ -327,13 +338,15 @@ export function VisualCanvas({
       window.removeEventListener("resize", resize);
       cancelAnimationFrame(animFrameRef.current);
     };
-  }, [isPlaying, mode, audioEngine, brightness, initFlowField, createParticle, getGlowSprite]);
+  }, [isPlaying, mode, audioEngine, brightness, prefersReducedMotion, initFlowField, createParticle, getGlowSprite]);
 
   return (
     <canvas
       ref={canvasRef}
       className="fixed inset-0 w-full h-full"
       style={{ background: "#0f0a05" }}
+      role="img"
+      aria-label="Ambient visualization with flowing particles and a breathing circle"
     />
   );
 }

@@ -55,22 +55,18 @@ export default function Home() {
     async (newMode: AudioMode) => {
       setMode(newMode);
       if (isPlaying && audioRef.current) {
-        // Smooth crossfade — no silence gap
         await audioRef.current.crossfadeTo(newMode);
       }
     },
     [isPlaying],
   );
 
-  const handleVolumeChange = useCallback(
-    (level: number) => {
-      setVolume(level);
-      if (audioRef.current) {
-        audioRef.current.setVolume(level);
-      }
-    },
-    [],
-  );
+  const handleVolumeChange = useCallback((level: number) => {
+    setVolume(level);
+    if (audioRef.current) {
+      audioRef.current.setVolume(level);
+    }
+  }, []);
 
   const handleBrightnessChange = useCallback((level: number) => {
     setBrightness(level);
@@ -81,6 +77,8 @@ export default function Home() {
       className="fixed inset-0 overflow-hidden select-none"
       onMouseMove={resetHideTimer}
       onTouchStart={resetHideTimer}
+      onKeyDown={resetHideTimer}
+      onFocusCapture={resetHideTimer}
       style={{ cursor: showUI ? "default" : "none" }}
     >
       <VisualCanvas
@@ -91,16 +89,16 @@ export default function Home() {
       />
 
       {/* Title */}
-      <div
-        className={`fixed top-0 left-0 right-0 z-10 flex flex-col items-center pt-8 pb-16 bg-gradient-to-b from-black/40 to-transparent transition-opacity duration-1000 ${showUI ? "opacity-100" : "opacity-0 pointer-events-none"}`}
+      <header
+        className={`fixed top-0 left-0 right-0 z-10 flex flex-col items-center pt-4 sm:pt-8 pb-8 sm:pb-16 bg-gradient-to-b from-black/40 to-transparent transition-opacity duration-1000 ${showUI ? "opacity-100" : "opacity-0 pointer-events-none"}`}
       >
-        <h1 className="text-amber-50/40 text-lg font-extralight tracking-[0.3em] uppercase">
+        <h1 className="text-amber-50/70 text-base sm:text-lg font-extralight tracking-[0.3em] uppercase">
           Regulate
         </h1>
-        <p className="text-amber-100/20 text-xs font-light tracking-wider mt-1">
+        <p className="text-amber-100/55 text-xs font-light tracking-wider mt-1">
           Nervous system music + visuals
         </p>
-      </div>
+      </header>
 
       {/* Controls */}
       <div

@@ -54,22 +54,22 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
 			style={{ background: "#0f0a05" }}
 		>
 			<div className="text-center max-w-md px-6">
-				<div className="text-amber-200/30 text-6xl mb-6 font-extralight">
+				<div className="text-amber-200/60 text-6xl mb-6 font-extralight">
 					~
 				</div>
-				<h1 className="text-amber-100/50 text-xl font-extralight tracking-wider mb-4">
+				<h1 className="text-amber-100/75 text-xl font-extralight tracking-wider mb-4">
 					{is404
 						? "This space doesn't exist yet"
 						: "Something needs a moment"}
 				</h1>
-				<p className="text-amber-200/25 text-sm font-light leading-relaxed mb-8">
+				<p className="text-amber-200/60 text-sm font-light leading-relaxed mb-8">
 					{is404
 						? "Let's bring you back to a calmer place."
 						: "Take a breath. These things happen. Let's start fresh."}
 				</p>
 				<a
 					href="/"
-					className="inline-block px-6 py-3 rounded-full bg-amber-200/8 text-amber-100/40 text-sm font-light tracking-wider border border-amber-200/12 hover:bg-amber-200/12 transition-all duration-500"
+					className="inline-block px-6 py-3 rounded-full bg-amber-200/8 text-amber-100/70 text-sm font-light tracking-wider border border-amber-200/25 hover:bg-amber-200/12 transition-all duration-500 focus-visible:ring-2 focus-visible:ring-amber-200/40 focus-visible:outline-none"
 				>
 					Return home
 				</a>
