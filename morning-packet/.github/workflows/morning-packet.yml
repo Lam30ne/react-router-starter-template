@@ -1,0 +1,40 @@
+name: Morning Packet
+
+on:
+  schedule:
+    # 8am ET = 12:00 UTC during EDT (March–November)
+    # During EST (November–March), 8am ET = 13:00 UTC
+    # Using 12:00 UTC covers EDT. Adjust to '0 13 * * 1-5' for EST,
+    # or add a second cron line to cover both:
+    #   - cron: '0 13 * * 1-5'
+    - cron: '0 12 * * 1-5'
+  workflow_dispatch: # Allow manual trigger for testing
+
+jobs:
+  send-packet:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r morning-packet/requirements.txt
+
+      - name: Send morning packet
+        env:
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_REFRESH_TOKEN: ${{ secrets.GOOGLE_REFRESH_TOKEN }}
+          CLICKUP_API_KEY: ${{ secrets.CLICKUP_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
+          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          TWILIO_FROM_NUMBER: ${{ secrets.TWILIO_FROM_NUMBER }}
+          TWILIO_TO_NUMBER: ${{ secrets.TWILIO_TO_NUMBER }}
+        working-directory: morning-packet
+        run: python packet.py

@@ -1,0 +1,103 @@
+# config.yaml — Morning Packet Configuration
+# Edit this file to change what appears in your daily briefing.
+# After editing, commit and push to GitHub. Changes take effect next morning.
+
+schedule:
+  time: "08:00"
+  timezone: "America/New_York"
+  days: [mon, tue, wed, thu, fri]
+
+clickup:
+  list_id: "901216933287"  # Adam's Plate list in EOS space
+  user_id: "4221354"       # Adam's ClickUp user ID
+  max_items: 5             # Max tasks to pull (top 3 shown in packet)
+
+gmail:
+  max_results: 20
+  lookback_hours: 24
+
+  # === ADAM FILTER: WHO PASSES THROUGH ===
+  # These senders' unread emails will appear in the packet.
+  # Add new client contacts as deals become active.
+  # Remove them when deals close.
+  allow_senders:
+    # Leadership / internal
+    - allie@withwonderly.com
+    - allie@thewonderjam.com
+    - camila                        # partial match — catches any camila@ address
+    # Active deal contacts
+    - devin@casadisinatra.com
+    - monika@dfg.vc
+    - katy@citronhygiene.com
+    - jas@citronhygiene.com
+    - christine@pathspot.com
+    - avery@goauntflow.com
+    # Financial / ops alerts (only if subject matches alert_subjects)
+    # These are handled separately below in alert_senders
+
+  # These senders only pass through if subject matches alert_subjects
+  alert_senders:
+    - support@nav.com
+    - alerts@mail.zapier.com
+    - notifications@harvestapp.com
+
+  alert_subjects:
+    - "low balance"
+    - "budget alert"
+    - "over the money budget"
+    - "error"
+    - "ALERT"
+    - "Possible error"
+
+  # === NOISE: ALWAYS IGNORE ===
+  # These senders are auto-filtered OUT of the packet.
+  # Emails from these senders will never appear.
+  ignore_senders:
+    - memberful.com
+    - triplewhale.com
+    - rewind.com
+    - paypal.com
+    - canva.com
+    - googlealerts-noreply
+    - beehiiv.com
+    - substack.com
+    - managewp.com
+    - stripe.com
+    - squarespace.com
+    - klaviyo.com
+    - chargeover.com
+    - backmarket.com
+    - columbuscrew.com
+    - ussoccer.com
+    - loox.io
+    - relatable.one
+    - perplexity.ai
+    - no-reply@email.claude.com
+    - reclaim.ai
+
+calendar:
+  calendar_id: "primary"  # adam@thewonderjam.com
+
+  # Strip these events from the packet (Reclaim buffers, personal blocks)
+  strip_patterns:
+    - "Focus time"
+    - "\u270d Focus time"
+    - "\U0001f68c Travel"
+    - "\u2611 Follow Up"
+    - "Break"
+    - "\U0001f6e1 Daily Wrap Up"
+    - "\U0001f6e1 \U0001f371 Lunch"
+    - "\u2747\ufe0f Lunch"
+    - "Busy"
+    - "Canceled:"
+
+  # Also strip any event created by Reclaim
+  strip_creators:
+    - "reclaim"
+
+twilio:
+  # Phone number is stored in .env, not here
+  # TWILIO_TO_NUMBER=+1XXXXXXXXXX
+
+sms:
+  max_chars: 1400  # SMS character limit for single message
