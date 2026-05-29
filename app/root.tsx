@@ -28,7 +28,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
 		<html lang="en">
 			<head>
 				<meta charSet="utf-8" />
-				<meta name="viewport" content="width=device-width, initial-scale=1" />
+				<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+				<link rel="manifest" href="/react-router-starter-template/manifest.json" />
 				<Meta />
 				<Links />
 			</head>
@@ -38,6 +39,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
 				<Scripts />
 			</body>
 		</html>
+	);
+}
+
+export function HydrateFallback() {
+	return (
+		<div
+			className="fixed inset-0 flex flex-col items-center justify-center"
+			style={{ background: "#0f0a05" }}
+		>
+			<p className="text-amber-100/70 text-lg font-extralight tracking-[0.3em] uppercase animate-pulse">
+				Loading...
+			</p>
+		</div>
 	);
 }
 
@@ -68,7 +82,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
 						: "Take a breath. These things happen. Let's start fresh."}
 				</p>
 				<a
-					href="/"
+					href="/react-router-starter-template/"
 					className="inline-block px-6 py-3 rounded-full bg-amber-200/8 text-amber-100/70 text-sm font-light tracking-wider border border-amber-200/25 hover:bg-amber-200/12 transition-all duration-500 focus-visible:ring-2 focus-visible:ring-amber-200/40 focus-visible:outline-none"
 				>
 					Return home

@@ -1,0 +1,10 @@
+{
+  "name": "Regulate",
+  "short_name": "Regulate",
+  "description": "Nervous system music & visuals",
+  "start_url": "/react-router-starter-template/",
+  "display": "fullscreen",
+  "background_color": "#0f0a05",
+  "theme_color": "#0f0a05",
+  "icons": []
+}
