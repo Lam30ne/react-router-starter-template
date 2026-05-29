@@ -9,16 +9,16 @@ export function getTimeOfDayShift(): {
   const hour = new Date().getHours();
 
   if (hour >= 6 && hour < 10) {
-    // Morning: slightly brighter, base palette is already warm
-    return { hueShift: 0, saturationMult: 1.0, brightnessMult: 1.1 };
+    // Morning: slightly brighter, gentle warmth
+    return { hueShift: -2, saturationMult: 0.95, brightnessMult: 1.05 };
   } else if (hour >= 10 && hour < 17) {
     // Daytime: neutral
     return { hueShift: 0, saturationMult: 1.0, brightnessMult: 1.0 };
   } else if (hour >= 17 && hour < 20) {
-    // Evening: warmer, slightly dimmer
-    return { hueShift: -5, saturationMult: 0.9, brightnessMult: 0.85 };
+    // Evening: warmer, noticeably dimmer and desaturated
+    return { hueShift: -8, saturationMult: 0.8, brightnessMult: 0.75 };
   } else {
-    // Night (20:00–06:00): deep amber, dim, minimal blue
-    return { hueShift: -10, saturationMult: 0.75, brightnessMult: 0.7 };
+    // Night (20:00–06:00): deep amber, very dim, strongly desaturated
+    return { hueShift: -15, saturationMult: 0.6, brightnessMult: 0.55 };
   }
 }

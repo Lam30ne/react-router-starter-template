@@ -1,49 +1,60 @@
 // Nervous system regulation audio engine
 // Frequencies anchored in 500Hz–4kHz safety range (prosodic voice band)
 // Binaural beats, warm pad synthesis, algorithmic reverb, filtered noise
-// Single AudioContext reused across modes via suspend/resume
 
 export type AudioMode = "calm" | "ground" | "drift";
+
+// Shared breath rhythm — all modulation entrains to this rate
+// ~5.7 breaths/min, matches visual-canvas.tsx for cross-modal coherence
+const BREATH_HZ = 0.095;
 
 interface ModeConfig {
   carrierFreq: number;
   binauralOffset: number;
   droneFreqs: number[];
-  padFreqs: number[]; // Detuned pairs for warm chorusing
+  padFreqs: number[];
   noiseGain: number;
   lfoRate: number;
+  filterBrightness: number;
+  reverbWet: number;
   label: string;
   description: string;
 }
 
 export const MODES: Record<AudioMode, ModeConfig> = {
   calm: {
-    carrierFreq: 580, // Prosodic speech range
-    binauralOffset: 4, // 4Hz theta — deep relaxation
+    carrierFreq: 580,
+    binauralOffset: 4,
     droneFreqs: [580, 870, 1160],
-    padFreqs: [580, 614, 1160, 1228], // ~6% detuned pairs
-    noiseGain: 0.03,
-    lfoRate: 0.08,
+    padFreqs: [580, 597, 1160, 1195], // ~3% detune (was ~6%)
+    noiseGain: 0.021, // ×0.7 for softer air texture
+    lfoRate: BREATH_HZ,
+    filterBrightness: 2200, // slightly open
+    reverbWet: 0.30,
     label: "Calm",
     description: "Theta waves for deep relaxation",
   },
   ground: {
     carrierFreq: 520,
-    binauralOffset: 7.83, // Schumann resonance
+    binauralOffset: 7.83,
     droneFreqs: [520, 780, 1040],
-    padFreqs: [520, 550, 1040, 1100],
-    noiseGain: 0.04,
-    lfoRate: 0.05,
+    padFreqs: [520, 536, 1040, 1072],
+    noiseGain: 0.028,
+    lfoRate: BREATH_HZ,
+    filterBrightness: 1800, // darker, thicker
+    reverbWet: 0.25, // dryer, more present
     label: "Ground",
     description: "Earth frequency for grounding",
   },
   drift: {
     carrierFreq: 660,
-    binauralOffset: 2.5, // Delta border — spacey state
+    binauralOffset: 2.5,
     droneFreqs: [660, 990, 1320],
-    padFreqs: [660, 698, 1320, 1395],
-    noiseGain: 0.025,
-    lfoRate: 0.03,
+    padFreqs: [660, 680, 1320, 1360],
+    noiseGain: 0.0175,
+    lfoRate: BREATH_HZ,
+    filterBrightness: 2400, // airier, more spacious
+    reverbWet: 0.40, // most reverberant
     label: "Drift",
     description: "Deep delta for spacing out",
   },
@@ -52,6 +63,8 @@ export const MODES: Record<AudioMode, ModeConfig> = {
 export class AudioEngine {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
+  private masterHighpass: BiquadFilterNode | null = null;
+  private masterLowpass: BiquadFilterNode | null = null;
   private nodes: AudioNode[] = [];
   private oscillators: OscillatorNode[] = [];
   private isPlaying = false;
@@ -60,128 +73,128 @@ export class AudioEngine {
   private frequencyData: Uint8Array = new Uint8Array(0);
   private volumeLevel = 0.7;
 
-  private ensureContext(): AudioContext {
-    if (!this.ctx) {
-      this.ctx = new AudioContext();
-    }
-    return this.ctx;
-  }
-
   async start(mode: AudioMode = "calm") {
     if (this.isPlaying) {
-      this.teardownNodes();
+      await this.stop();
     }
 
     this.currentMode = mode;
-    const ctx = this.ensureContext();
-
-    // Resume if suspended (iOS requires user gesture)
-    if (ctx.state === "suspended") {
-      await ctx.resume();
-    }
-
+    this.ctx = new AudioContext();
     const config = MODES[mode];
-    const targetGain = this.volumeLevel * 0.8;
 
-    // Master gain with slow fade in
-    this.masterGain = ctx.createGain();
-    this.masterGain.gain.setValueAtTime(0, ctx.currentTime);
-    this.masterGain.gain.linearRampToValueAtTime(
+    const targetGain = this.volumeLevel * 0.5;
+
+    // Master gain with slow fade in (5s exponential ramp)
+    this.masterGain = this.ctx.createGain();
+    this.masterGain.gain.setValueAtTime(0.001, this.ctx.currentTime);
+    this.masterGain.gain.exponentialRampToValueAtTime(
       targetGain,
-      ctx.currentTime + 3,
+      this.ctx.currentTime + 5,
     );
 
-    // Reverb: wet/dry split
-    const { dry, wet } = this.createReverb();
-    this.masterGain.connect(dry);
-    this.masterGain.connect(wet);
+    // Master EQ: remove threatening rumble and harsh brightness
+    this.masterHighpass = this.ctx.createBiquadFilter();
+    this.masterHighpass.type = "highpass";
+    this.masterHighpass.frequency.value = 100;
+    this.masterHighpass.Q.value = 0.7;
 
-    // Analyser for visual reactivity
-    this.analyser = ctx.createAnalyser();
+    this.masterLowpass = this.ctx.createBiquadFilter();
+    this.masterLowpass.type = "lowpass";
+    this.masterLowpass.frequency.value = 4000;
+    this.masterLowpass.Q.value = 0.7;
+
+    // Signal chain: masterGain → highpass → lowpass → [dry/wet split]
+    this.masterGain.connect(this.masterHighpass);
+    this.masterHighpass.connect(this.masterLowpass);
+
+    // Reverb: mode-specific wet/dry split
+    const { dry, wet } = this.createReverb(config.reverbWet);
+    this.masterLowpass.connect(dry);
+    this.masterLowpass.connect(wet);
+
+    // Analyser for visual reactivity (taps EQ'd signal)
+    this.analyser = this.ctx.createAnalyser();
     this.analyser.fftSize = 256;
     this.frequencyData = new Uint8Array(this.analyser.frequencyBinCount);
-    this.masterGain.connect(this.analyser);
+    this.masterLowpass.connect(this.analyser);
 
+    this.nodes.push(this.masterHighpass, this.masterLowpass);
+
+    // Binaural beat pair (stereo separation) — subtle background texture
     this.createBinauralBeat(config.carrierFreq, config.binauralOffset);
+
+    // Warm drone layers (triangle + gentle chorusing)
     for (const freq of config.droneFreqs) {
-      this.createDrone(freq, config.lfoRate);
+      this.createDrone(freq);
     }
-    this.createWarmPad(config.padFreqs, config.lfoRate);
-    this.createFilteredNoise(config.noiseGain, config.lfoRate);
+
+    // Warm pad (detuned pairs for richness)
+    this.createWarmPad(config.padFreqs, config.filterBrightness);
+
+    // Filtered noise (air/breath texture)
+    this.createFilteredNoise(config.noiseGain);
+
+    // Breath-paced master volume modulation
     this.createMasterBreathing(targetGain);
 
     this.isPlaying = true;
   }
 
-  private teardownNodes() {
-    for (const osc of this.oscillators) {
-      try { osc.stop(); } catch {}
-    }
-    for (const node of this.nodes) {
-      try { node.disconnect(); } catch {}
-    }
-    if (this.analyser) {
-      try { this.analyser.disconnect(); } catch {}
-    }
-    if (this.masterGain) {
-      try { this.masterGain.disconnect(); } catch {}
-    }
-    this.oscillators = [];
-    this.nodes = [];
-    this.analyser = null;
-    this.masterGain = null;
-  }
+  private createReverb(reverbWet: number): { dry: GainNode; wet: GainNode } {
+    if (!this.ctx) throw new Error("No AudioContext");
 
-  private createReverb(): { dry: GainNode; wet: GainNode } {
-    const ctx = this.ensureContext();
-
-    const length = Math.floor(ctx.sampleRate * 0.8);
-    const impulse = ctx.createBuffer(2, length, ctx.sampleRate);
+    // Generate impulse response: 0.8s decay
+    const length = Math.floor(this.ctx.sampleRate * 0.8);
+    const impulse = this.ctx.createBuffer(2, length, this.ctx.sampleRate);
 
     for (let ch = 0; ch < 2; ch++) {
       const data = impulse.getChannelData(ch);
       for (let i = 0; i < length; i++) {
         const decay = Math.pow(1 - i / length, 2.5);
         data[i] = (Math.random() * 2 - 1) * decay;
+        // Simple high-frequency rolloff: average with previous sample
         if (i > 0) {
           data[i] = data[i] * 0.6 + data[i - 1] * 0.4;
         }
       }
     }
 
-    const convolver = ctx.createConvolver();
+    const convolver = this.ctx.createConvolver();
     convolver.buffer = impulse;
 
-    const dry = ctx.createGain();
-    dry.gain.value = 0.7;
-    dry.connect(ctx.destination);
+    // Dry path (mode-specific)
+    const dry = this.ctx.createGain();
+    dry.gain.value = 1 - reverbWet;
+    dry.connect(this.ctx.destination);
 
-    const wetGain = ctx.createGain();
-    wetGain.gain.value = 0.3;
+    // Wet path (mode-specific)
+    const wetGain = this.ctx.createGain();
+    wetGain.gain.value = reverbWet;
     wetGain.connect(convolver);
-    convolver.connect(ctx.destination);
+    convolver.connect(this.ctx.destination);
 
     this.nodes.push(dry, wetGain, convolver);
     return { dry, wet: wetGain };
   }
 
   private createBinauralBeat(carrier: number, offset: number) {
-    const ctx = this.ensureContext();
-    if (!this.masterGain) return;
+    if (!this.ctx || !this.masterGain) return;
 
-    const merger = ctx.createChannelMerger(2);
-    const gainL = ctx.createGain();
-    const gainR = ctx.createGain();
-    gainL.gain.value = 0.12;
-    gainR.gain.value = 0.12;
+    const merger = this.ctx.createChannelMerger(2);
+    const gainL = this.ctx.createGain();
+    const gainR = this.ctx.createGain();
+    gainL.gain.value = 0.06; // subtle, not dominant (was 0.12)
+    gainR.gain.value = 0.06;
 
-    const oscL = ctx.createOscillator();
+    // Left ear — sine keeps binaural beat clean
+    const oscL = this.ctx.createOscillator();
     oscL.type = "sine";
     oscL.frequency.value = carrier;
     oscL.connect(gainL);
     gainL.connect(merger, 0, 0);
 
-    const oscR = ctx.createOscillator();
+    // Right ear (offset for binaural beat)
+    const oscR = this.ctx.createOscillator();
     oscR.type = "sine";
     oscR.frequency.value = carrier + offset;
     oscR.connect(gainR);
@@ -195,32 +208,35 @@ export class AudioEngine {
     this.nodes.push(gainL, gainR, merger);
   }
 
-  private createDrone(freq: number, lfoRate: number) {
-    const ctx = this.ensureContext();
-    if (!this.masterGain) return;
+  private createDrone(freq: number) {
+    if (!this.ctx || !this.masterGain) return;
 
-    const osc = ctx.createOscillator();
+    // Primary: triangle wave for richer harmonics
+    const osc = this.ctx.createOscillator();
     osc.type = "triangle";
     osc.frequency.value = freq;
 
-    const osc2 = ctx.createOscillator();
+    // Chorus: second oscillator gently detuned (was +3Hz, now +1.2Hz)
+    const osc2 = this.ctx.createOscillator();
     osc2.type = "triangle";
-    osc2.frequency.value = freq + 3;
+    osc2.frequency.value = freq + 1.2;
 
-    const osc2Gain = ctx.createGain();
-    osc2Gain.gain.value = 0.6;
+    const osc2Gain = this.ctx.createGain();
+    osc2Gain.gain.value = 0.5; // gentler chorus blend (was 0.6)
 
-    const lfo = ctx.createOscillator();
+    // Breath-paced amplitude modulation (shared rate, no random jitter)
+    const lfo = this.ctx.createOscillator();
     lfo.type = "sine";
-    lfo.frequency.value = lfoRate + Math.random() * 0.02;
+    lfo.frequency.value = BREATH_HZ;
 
-    const lfoGain = ctx.createGain();
-    lfoGain.gain.value = 0.03;
+    const lfoGain = this.ctx.createGain();
+    lfoGain.gain.value = 0.02; // was 0.03
 
-    const droneGain = ctx.createGain();
-    droneGain.gain.value = 0.04;
+    const droneGain = this.ctx.createGain();
+    droneGain.gain.value = 0.05; // warmer presence (was 0.04)
 
-    const filter = ctx.createBiquadFilter();
+    // Lowpass lets warmth through
+    const filter = this.ctx.createBiquadFilter();
     filter.type = "lowpass";
     filter.frequency.value = freq * 3;
     filter.Q.value = 0.7;
@@ -241,37 +257,38 @@ export class AudioEngine {
     this.nodes.push(osc2Gain, lfoGain, droneGain, filter);
   }
 
-  private createWarmPad(padFreqs: number[], lfoRate: number) {
-    const ctx = this.ensureContext();
-    if (!this.masterGain) return;
+  private createWarmPad(padFreqs: number[], filterBrightness: number) {
+    if (!this.ctx || !this.masterGain) return;
 
+    // Pairs of detuned triangle oscillators through a warm lowpass
     for (let i = 0; i < padFreqs.length; i += 2) {
       const f1 = padFreqs[i];
       const f2 = padFreqs[i + 1];
       if (f2 === undefined) break;
 
-      const osc1 = ctx.createOscillator();
+      const osc1 = this.ctx.createOscillator();
       osc1.type = "triangle";
       osc1.frequency.value = f1;
 
-      const osc2 = ctx.createOscillator();
+      const osc2 = this.ctx.createOscillator();
       osc2.type = "triangle";
       osc2.frequency.value = f2;
 
-      const filter = ctx.createBiquadFilter();
+      const filter = this.ctx.createBiquadFilter();
       filter.type = "lowpass";
-      filter.frequency.value = 2000;
+      filter.frequency.value = filterBrightness; // mode-specific (was 2000)
       filter.Q.value = 0.7;
 
-      const lfo = ctx.createOscillator();
+      // Breath-paced LFO (shared rate, no random jitter)
+      const lfo = this.ctx.createOscillator();
       lfo.type = "sine";
-      lfo.frequency.value = lfoRate * 0.8 + Math.random() * 0.01;
+      lfo.frequency.value = BREATH_HZ;
 
-      const lfoGain = ctx.createGain();
-      lfoGain.gain.value = 0.015;
+      const lfoGain = this.ctx.createGain();
+      lfoGain.gain.value = 0.012; // was 0.015
 
-      const padGain = ctx.createGain();
-      padGain.gain.value = 0.03;
+      const padGain = this.ctx.createGain();
+      padGain.gain.value = 0.045; // warmer dominance (was 0.03)
 
       lfo.connect(lfoGain);
       lfoGain.connect(padGain.gain);
@@ -289,16 +306,22 @@ export class AudioEngine {
     }
   }
 
-  private createFilteredNoise(gain: number, lfoRate: number) {
-    const ctx = this.ensureContext();
-    if (!this.masterGain) return;
+  private createFilteredNoise(gain: number) {
+    if (!this.ctx || !this.masterGain) return;
 
-    const bufferSize = ctx.sampleRate * 4;
-    const buffer = ctx.createBuffer(2, bufferSize, ctx.sampleRate);
+    // Generate pink-ish noise buffer
+    const bufferSize = this.ctx.sampleRate * 4;
+    const buffer = this.ctx.createBuffer(2, bufferSize, this.ctx.sampleRate);
 
     for (let channel = 0; channel < 2; channel++) {
       const data = buffer.getChannelData(channel);
-      let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
+      let b0 = 0,
+        b1 = 0,
+        b2 = 0,
+        b3 = 0,
+        b4 = 0,
+        b5 = 0,
+        b6 = 0;
       for (let i = 0; i < bufferSize; i++) {
         const white = Math.random() * 2 - 1;
         b0 = 0.99886 * b0 + white * 0.0555179;
@@ -312,26 +335,28 @@ export class AudioEngine {
       }
     }
 
-    const noise = ctx.createBufferSource();
+    const noise = this.ctx.createBufferSource();
     noise.buffer = buffer;
     noise.loop = true;
 
-    const bp = ctx.createBiquadFilter();
-    bp.type = "bandpass";
-    bp.frequency.value = 800;
+    // Lowpass for air/breath texture (was bandpass @ 800Hz — too hissy)
+    const bp = this.ctx.createBiquadFilter();
+    bp.type = "lowpass";
+    bp.frequency.value = 1200;
     bp.Q.value = 0.6;
 
-    const lfo = ctx.createOscillator();
+    // Breath-paced filter modulation (gentler sweep)
+    const lfo = this.ctx.createOscillator();
     lfo.type = "sine";
-    lfo.frequency.value = lfoRate * 0.7;
+    lfo.frequency.value = BREATH_HZ;
 
-    const lfoGain = ctx.createGain();
-    lfoGain.gain.value = 150;
+    const lfoGain = this.ctx.createGain();
+    lfoGain.gain.value = 60; // was 150 — much smaller sweep
 
     lfo.connect(lfoGain);
     lfoGain.connect(bp.frequency);
 
-    const noiseGain = ctx.createGain();
+    const noiseGain = this.ctx.createGain();
     noiseGain.gain.value = gain;
 
     noise.connect(bp);
@@ -345,15 +370,16 @@ export class AudioEngine {
   }
 
   private createMasterBreathing(targetGain: number) {
-    const ctx = this.ensureContext();
-    if (!this.masterGain) return;
+    if (!this.ctx || !this.masterGain) return;
 
-    const lfo = ctx.createOscillator();
+    // Breath-paced LFO (~5.7 bpm) modulates master volume
+    // 20% depth creates natural micro-pauses at breath troughs
+    const lfo = this.ctx.createOscillator();
     lfo.type = "sine";
-    lfo.frequency.value = 0.015;
+    lfo.frequency.value = BREATH_HZ; // was 0.015
 
-    const lfoGain = ctx.createGain();
-    lfoGain.gain.value = targetGain * 0.15;
+    const lfoGain = this.ctx.createGain();
+    lfoGain.gain.value = targetGain * 0.20; // was 0.15
 
     lfo.connect(lfoGain);
     lfoGain.connect(this.masterGain.gain);
@@ -363,51 +389,75 @@ export class AudioEngine {
     this.nodes.push(lfoGain);
   }
 
+  // Smooth crossfade to new mode (no silence gap)
   async crossfadeTo(newMode: AudioMode) {
     if (!this.isPlaying || !this.ctx || !this.masterGain) {
       return this.start(newMode);
     }
 
+    const oldCtx = this.ctx;
     const oldMasterGain = this.masterGain;
     const oldOscillators = this.oscillators;
     const oldNodes = this.nodes;
     const oldAnalyser = this.analyser;
 
-    // Fade old out over 1.5s
-    oldMasterGain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 1.5);
+    // Fade old out over 4s (was 1.5s) with exponential curve
+    oldMasterGain.gain.exponentialRampToValueAtTime(
+      0.001,
+      oldCtx.currentTime + 4,
+    );
 
-    // Reset instance state but keep the same AudioContext
+    // Reset instance state for new context
+    this.ctx = null;
     this.masterGain = null;
+    this.masterHighpass = null;
+    this.masterLowpass = null;
     this.oscillators = [];
     this.nodes = [];
     this.analyser = null;
     this.isPlaying = false;
 
-    // Start new mode (reuses existing context)
+    // Start new mode (builds new context, fades in)
     await this.start(newMode);
 
-    // Clean up old nodes after crossfade completes
-    setTimeout(() => {
+    // Clean up old context after crossfade completes
+    setTimeout(async () => {
       for (const osc of oldOscillators) {
-        try { osc.stop(); } catch {}
+        try {
+          osc.stop();
+        } catch {}
       }
       for (const node of oldNodes) {
-        try { node.disconnect(); } catch {}
+        try {
+          node.disconnect();
+        } catch {}
       }
       if (oldAnalyser) {
-        try { oldAnalyser.disconnect(); } catch {}
+        try {
+          oldAnalyser.disconnect();
+        } catch {}
       }
-      try { oldMasterGain.disconnect(); } catch {}
-    }, 1600);
+      try {
+        await oldCtx.close();
+      } catch {}
+    }, 4200); // was 1600
   }
 
   setVolume(level: number) {
     this.volumeLevel = Math.max(0, Math.min(1, level));
     if (this.ctx && this.masterGain) {
-      this.masterGain.gain.linearRampToValueAtTime(
-        this.volumeLevel * 0.8,
-        this.ctx.currentTime + 0.3,
-      );
+      const target = this.volumeLevel * 0.5;
+      if (target < 0.001) {
+        this.masterGain.gain.linearRampToValueAtTime(
+          0,
+          this.ctx.currentTime + 0.3,
+        );
+      } else {
+        this.masterGain.gain.exponentialRampToValueAtTime(
+          target,
+          this.ctx.currentTime + 0.3,
+        );
+      }
     }
   }
 
@@ -431,41 +481,37 @@ export class AudioEngine {
   async stop() {
     if (!this.ctx) return;
 
-    // Fade out over 2s
+    // Fade out over 4s (was 2s) with exponential curve
     if (this.masterGain) {
-      this.masterGain.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 2);
+      this.masterGain.gain.exponentialRampToValueAtTime(
+        0.001,
+        this.ctx.currentTime + 4,
+      );
     }
 
-    // Capture current nodes so delayed cleanup doesn't touch new ones
-    const nodesToClean = this.nodes;
-    const oscsToClean = this.oscillators;
-    const analyserToClean = this.analyser;
-    const gainToClean = this.masterGain;
-    const ctxToSuspend = this.ctx;
+    await new Promise((resolve) => setTimeout(resolve, 4200)); // was 2100
 
-    // Clear instance state immediately
-    this.nodes = [];
+    for (const osc of this.oscillators) {
+      try {
+        osc.stop();
+      } catch {}
+    }
+    for (const node of this.nodes) {
+      try {
+        node.disconnect();
+      } catch {}
+    }
+
     this.oscillators = [];
-    this.analyser = null;
-    this.masterGain = null;
-    this.isPlaying = false;
+    this.nodes = [];
 
-    // Schedule cleanup after fade-out (non-blocking)
-    setTimeout(() => {
-      for (const osc of oscsToClean) {
-        try { osc.stop(); } catch {}
-      }
-      for (const node of nodesToClean) {
-        try { node.disconnect(); } catch {}
-      }
-      if (analyserToClean) {
-        try { analyserToClean.disconnect(); } catch {}
-      }
-      if (gainToClean) {
-        try { gainToClean.disconnect(); } catch {}
-      }
-      ctxToSuspend.suspend().catch(() => {});
-    }, 2100);
+    await this.ctx.close();
+    this.ctx = null;
+    this.masterGain = null;
+    this.masterHighpass = null;
+    this.masterLowpass = null;
+    this.analyser = null;
+    this.isPlaying = false;
   }
 
   getIsPlaying() {
@@ -474,13 +520,5 @@ export class AudioEngine {
 
   getMode() {
     return this.currentMode;
-  }
-
-  dispose() {
-    this.teardownNodes();
-    if (this.ctx) {
-      this.ctx.close().catch(() => {});
-      this.ctx = null;
-    }
   }
 }
