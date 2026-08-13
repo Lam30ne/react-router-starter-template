@@ -1,49 +1,69 @@
-import { MODES, type AudioMode } from "./audio-engine";
+import { SOUNDSCAPES } from "./audio-engine";
+import { SOUNDSCAPE_DESCRIPTIONS } from "../lib/constants";
+import { SessionIndicator, SessionAnnouncer } from "./session-indicator";
+import type { SoundscapeId } from "../lib/settings";
+import type { SessionState, SessionType } from "../lib/session-controller";
 
 export function Controls({
-  isPlaying,
-  mode,
+  sessionState,
+  sessionType,
+  progress,
+  soundscape,
   volume,
   brightness,
-  onToggle,
-  onModeChange,
+  onStartReset,
+  onStartOpen,
+  onStop,
+  onReplay,
+  onSoundscapeChange,
   onVolumeChange,
   onBrightnessChange,
+  onOpenSettings,
 }: {
-  isPlaying: boolean;
-  mode: AudioMode;
+  sessionState: SessionState;
+  sessionType: SessionType;
+  progress: number;
+  soundscape: SoundscapeId;
   volume: number;
   brightness: number;
-  onToggle: () => void;
-  onModeChange: (mode: AudioMode) => void;
+  onStartReset: () => void;
+  onStartOpen: () => void;
+  onStop: () => void;
+  onReplay: () => void;
+  onSoundscapeChange: (s: SoundscapeId) => void;
   onVolumeChange: (level: number) => void;
   onBrightnessChange: (level: number) => void;
+  onOpenSettings: () => void;
 }) {
+  const isActive = sessionState !== "idle" && sessionState !== "completed";
+
   return (
     <div
       className="fixed bottom-0 left-0 right-0 z-10 flex flex-col items-center pb-4 sm:pb-8 pt-8 sm:pt-16 bg-gradient-to-t from-black/60 to-transparent transition-opacity duration-1000"
       role="toolbar"
-      aria-label="Audio and visual controls"
+      aria-label="Session and sound controls"
     >
-      {/* Mode selector */}
+      <SessionAnnouncer state={sessionState} />
+
+      {/* Soundscape selector */}
       <div className="flex flex-wrap justify-center gap-2 mb-5 px-4">
-        {(Object.keys(MODES) as AudioMode[]).map((m) => (
+        {(Object.keys(SOUNDSCAPES) as SoundscapeId[]).map((s) => (
           <button
-            key={m}
-            onClick={() => onModeChange(m)}
-            aria-pressed={mode === m}
-            className={`px-4 py-2 rounded-full text-sm font-light tracking-wider transition-all duration-500 focus-visible:ring-2 focus-visible:ring-amber-200/60 focus-visible:outline-none ${
-              mode === m
+            key={s}
+            onClick={() => onSoundscapeChange(s)}
+            aria-pressed={soundscape === s}
+            className={`min-h-[44px] px-4 py-2 rounded-full text-sm font-light tracking-wider transition-all duration-500 focus-visible:ring-2 focus-visible:ring-amber-200/60 focus-visible:outline-none ${
+              soundscape === s
                 ? "bg-amber-100/10 text-amber-50/80 border border-amber-200/20 shadow-[0_0_15px_rgba(251,191,36,0.08)]"
                 : "bg-white/5 text-white/60 border border-white/10 hover:bg-amber-100/5 hover:text-amber-50/80"
             }`}
           >
-            {MODES[m].label}
+            {SOUNDSCAPES[s].label}
           </button>
         ))}
       </div>
 
-      {/* Intensity sliders */}
+      {/* Sliders */}
       <div className="flex flex-col sm:flex-row gap-3 sm:gap-6 mb-5 items-center">
         <label className="flex items-center gap-2">
           <span className="text-amber-100/60 text-xs font-light tracking-wider uppercase w-16 text-right">
@@ -57,6 +77,10 @@ export function Controls({
             onChange={(e) => onVolumeChange(Number(e.target.value) / 100)}
             className="slider"
             aria-label="Volume"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(volume * 100)}
+            aria-valuetext={`${Math.round(volume * 100)} percent`}
           />
         </label>
         <label className="flex items-center gap-2">
@@ -71,43 +95,80 @@ export function Controls({
             onChange={(e) => onBrightnessChange(Number(e.target.value) / 100)}
             className="slider"
             aria-label="Visual brightness"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={Math.round(brightness * 100)}
+            aria-valuetext={`${Math.round(brightness * 100)} percent`}
           />
         </label>
       </div>
 
-      {/* Play/Stop */}
-      <button
-        onClick={onToggle}
-        className="group relative w-16 h-16 rounded-full bg-amber-100/8 border border-amber-200/15 hover:bg-amber-100/12 transition-all duration-500 flex items-center justify-center hover:shadow-[0_0_30px_rgba(251,191,36,0.06)] focus-visible:ring-2 focus-visible:ring-amber-200/60 focus-visible:outline-none"
-        aria-label={isPlaying ? "Stop" : "Play"}
-      >
-        {isPlaying ? (
-          <div className="flex gap-1.5">
-            <div className="w-1.5 h-5 bg-amber-100/60 rounded-full" />
-            <div className="w-1.5 h-5 bg-amber-100/60 rounded-full" />
-          </div>
-        ) : (
-          <div className="w-0 h-0 border-t-[10px] border-t-transparent border-b-[10px] border-b-transparent border-l-[16px] border-l-amber-100/60 ml-1" />
-        )}
-        {isPlaying && (
-          <div
-            className="absolute inset-0 rounded-full border border-amber-200/15 animate-ping opacity-20"
-            aria-hidden="true"
+      {/* Session controls */}
+      {sessionState === "completed" ? (
+        <SessionIndicator
+          state={sessionState}
+          sessionType={sessionType}
+          progress={progress}
+          onStartAgain={onReplay}
+          onOpenSession={onStartOpen}
+        />
+      ) : isActive ? (
+        <div className="flex flex-col items-center gap-3">
+          <SessionIndicator
+            state={sessionState}
+            sessionType={sessionType}
+            progress={progress}
+            onStartAgain={onReplay}
+            onOpenSession={onStartOpen}
           />
-        )}
-      </button>
+          <button
+            onClick={onStop}
+            className="min-h-[44px] group relative w-16 h-16 rounded-full bg-amber-100/8 border border-amber-200/15 hover:bg-amber-100/12 transition-all duration-500 flex items-center justify-center hover:shadow-[0_0_30px_rgba(251,191,36,0.06)] focus-visible:ring-2 focus-visible:ring-amber-200/60 focus-visible:outline-none"
+            aria-label="Stop"
+          >
+            <div className="flex gap-1.5">
+              <div className="w-1.5 h-5 bg-amber-100/60 rounded-full" />
+              <div className="w-1.5 h-5 bg-amber-100/60 rounded-full" />
+            </div>
+            <div
+              className="absolute inset-0 rounded-full border border-amber-200/15 animate-ping opacity-20"
+              aria-hidden="true"
+            />
+          </button>
+        </div>
+      ) : (
+        <div className="flex flex-col items-center gap-3">
+          <button
+            onClick={onStartReset}
+            className="min-h-[44px] px-6 py-3 rounded-full bg-amber-200/10 text-amber-100/80 text-sm font-light tracking-wider border border-amber-200/20 hover:bg-amber-200/15 transition-all duration-500 focus-visible:ring-2 focus-visible:ring-amber-200/60 focus-visible:outline-none"
+          >
+            Start 5-Minute Reset
+          </button>
+          <button
+            onClick={onStartOpen}
+            className="min-h-[44px] px-5 py-2 rounded-full text-amber-100/40 text-xs font-light tracking-wider border border-amber-200/10 hover:text-amber-100/60 hover:bg-white/5 transition-all duration-300 focus-visible:ring-2 focus-visible:ring-amber-200/60 focus-visible:outline-none"
+          >
+            Open session
+          </button>
+        </div>
+      )}
 
-      {/* Mode description */}
+      {/* Soundscape description */}
       <p className="mt-4 text-amber-100/60 text-xs font-light tracking-widest uppercase">
-        {MODES[mode].description}
+        {SOUNDSCAPE_DESCRIPTIONS[soundscape]}
       </p>
 
-      {/* Headphones hint */}
-      {!isPlaying && (
-        <p className="mt-2 text-amber-100/50 text-xs font-light tracking-wider">
-          Headphones recommended for binaural beats
-        </p>
-      )}
+      {/* Settings button */}
+      <button
+        onClick={onOpenSettings}
+        className="mt-3 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full text-amber-100/30 hover:text-amber-100/60 hover:bg-white/5 transition-all duration-300 focus-visible:ring-2 focus-visible:ring-amber-200/60 focus-visible:outline-none"
+        aria-label="Open settings"
+      >
+        <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="9" cy="9" r="2.5" />
+          <path d="M9 1.5v2M9 14.5v2M1.5 9h2M14.5 9h2M3.1 3.1l1.4 1.4M13.5 13.5l1.4 1.4M3.1 14.9l1.4-1.4M13.5 4.5l1.4-1.4" />
+        </svg>
+      </button>
     </div>
   );
 }

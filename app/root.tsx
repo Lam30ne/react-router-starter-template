@@ -30,6 +30,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
 				<meta charSet="utf-8" />
 				<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 				<link rel="manifest" href="/react-router-starter-template/manifest.json" />
+				<link rel="icon" type="image/png" sizes="192x192" href="/react-router-starter-template/icons/icon-192.png" />
+				<link rel="apple-touch-icon" href="/react-router-starter-template/icons/icon-192.png" />
 				<Meta />
 				<Links />
 			</head>
@@ -37,6 +39,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
 				{children}
 				<ScrollRestoration />
 				<Scripts />
+				<script
+					dangerouslySetInnerHTML={{
+						__html: `
+							if ('serviceWorker' in navigator && location.hostname !== 'localhost') {
+								window.addEventListener('load', function() {
+									navigator.serviceWorker.register('/react-router-starter-template/sw.js', {
+										scope: '/react-router-starter-template/'
+									});
+								});
+							}
+						`,
+					}}
+				/>
 			</body>
 		</html>
 	);
