@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { UserSettings } from "../lib/settings";
 import { RHYTHM_PRESETS, type RhythmPresetId } from "../lib/regulation-clock";
+import { BRAND } from "../lib/constants";
 
 interface SettingsPanelProps {
   settings: UserSettings;
@@ -9,8 +10,46 @@ interface SettingsPanelProps {
   onClose: () => void;
 }
 
+function ToggleSwitch({ checked, onChange, label, description }: {
+  checked: boolean;
+  onChange: () => void;
+  label: string;
+  description?: string;
+}) {
+  return (
+    <div className="flex items-center justify-between">
+      <div>
+        <span className="text-amber-100/60 text-xs tracking-wider">{label}</span>
+        {description && <p className="text-amber-100/30 text-[10px] mt-0.5">{description}</p>}
+      </div>
+      <button
+        role="switch"
+        aria-checked={checked}
+        onClick={onChange}
+        className={`relative w-10 h-6 rounded-full transition-colors duration-300 focus-visible:ring-2 focus-visible:ring-amber-200/60 focus-visible:outline-none ${
+          checked ? "bg-amber-200/25" : "bg-white/10"
+        }`}
+      >
+        <span
+          className={`absolute top-1 w-4 h-4 rounded-full transition-all duration-300 ${
+            checked ? "left-5 bg-amber-200/70" : "left-1 bg-amber-100/30"
+          }`}
+        />
+      </button>
+    </div>
+  );
+}
+
+const pillClass = (active: boolean) =>
+  `flex-1 min-h-[44px] px-2 py-2 rounded-full text-[11px] tracking-wider transition-all duration-300 focus-visible:ring-2 focus-visible:ring-amber-200/60 focus-visible:outline-none ${
+    active
+      ? "bg-amber-200/12 text-amber-100/80 border border-amber-200/25"
+      : "text-amber-100/40 border border-transparent hover:text-amber-100/60 hover:bg-white/5"
+  }`;
+
 export function SettingsPanel({ settings, onUpdate, isOpen, onClose }: SettingsPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const [showSafety, setShowSafety] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -63,7 +102,7 @@ export function SettingsPanel({ settings, onUpdate, isOpen, onClose }: SettingsP
         role="dialog"
         aria-label="Settings"
         aria-modal="true"
-        className="relative w-full max-w-md rounded-t-2xl bg-[#1a1410] border-t border-amber-200/10 p-6 pb-8 space-y-6 animate-slideUp"
+        className="relative w-full max-w-md max-h-[80vh] overflow-y-auto rounded-t-2xl bg-[#1a1410] border-t border-amber-200/10 p-6 pb-8 space-y-6 animate-slideUp"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
@@ -101,27 +140,33 @@ export function SettingsPanel({ settings, onUpdate, isOpen, onClose }: SettingsP
           </div>
         </fieldset>
 
-        {/* Binaural */}
-        <div className="flex items-center justify-between">
-          <div>
-            <span className="text-amber-100/60 text-xs tracking-wider">Binaural tones</span>
-            <p className="text-amber-100/30 text-[10px] mt-0.5">Headphones recommended</p>
+        {/* Cycle shape */}
+        <fieldset>
+          <legend className="text-amber-100/50 text-xs tracking-wider uppercase mb-2">Cycle shape</legend>
+          <div className="flex gap-2">
+            {([
+              { id: "longer-release" as const, label: "Longer release" },
+              { id: "balanced" as const, label: "Balanced" },
+            ]).map(({ id, label }) => (
+              <button
+                key={id}
+                onClick={() => onUpdate({ cycleShape: id })}
+                aria-pressed={settings.cycleShape === id}
+                className={pillClass(settings.cycleShape === id)}
+              >
+                {label}
+              </button>
+            ))}
           </div>
-          <button
-            role="switch"
-            aria-checked={settings.binauralEnabled}
-            onClick={() => onUpdate({ binauralEnabled: !settings.binauralEnabled })}
-            className={`relative w-10 h-6 rounded-full transition-colors duration-300 focus-visible:ring-2 focus-visible:ring-amber-200/60 focus-visible:outline-none ${
-              settings.binauralEnabled ? "bg-amber-200/25" : "bg-white/10"
-            }`}
-          >
-            <span
-              className={`absolute top-1 w-4 h-4 rounded-full transition-all duration-300 ${
-                settings.binauralEnabled ? "left-5 bg-amber-200/70" : "left-1 bg-amber-100/30"
-              }`}
-            />
-          </button>
-        </div>
+        </fieldset>
+
+        {/* Binaural */}
+        <ToggleSwitch
+          checked={settings.binauralEnabled}
+          onChange={() => onUpdate({ binauralEnabled: !settings.binauralEnabled })}
+          label="Binaural tones"
+          description="An optional stereo texture most noticeable with headphones"
+        />
 
         {/* Experience */}
         <fieldset>
@@ -136,11 +181,28 @@ export function SettingsPanel({ settings, onUpdate, isOpen, onClose }: SettingsP
                 key={id}
                 onClick={() => onUpdate({ experienceMode: id })}
                 aria-pressed={settings.experienceMode === id}
-                className={`flex-1 min-h-[44px] px-2 py-2 rounded-full text-[11px] tracking-wider transition-all duration-300 focus-visible:ring-2 focus-visible:ring-amber-200/60 focus-visible:outline-none ${
-                  settings.experienceMode === id
-                    ? "bg-amber-200/12 text-amber-100/80 border border-amber-200/25"
-                    : "text-amber-100/40 border border-transparent hover:text-amber-100/60 hover:bg-white/5"
-                }`}
+                className={pillClass(settings.experienceMode === id)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </fieldset>
+
+        {/* Audio reactivity */}
+        <fieldset>
+          <legend className="text-amber-100/50 text-xs tracking-wider uppercase mb-2">Audio reactivity</legend>
+          <div className="flex gap-2">
+            {([
+              { id: "on" as const, label: "On" },
+              { id: "reduced" as const, label: "Reduced" },
+              { id: "off" as const, label: "Off" },
+            ]).map(({ id, label }) => (
+              <button
+                key={id}
+                onClick={() => onUpdate({ audioReactivity: id })}
+                aria-pressed={settings.audioReactivity === id}
+                className={pillClass(settings.audioReactivity === id)}
               >
                 {label}
               </button>
@@ -162,11 +224,7 @@ export function SettingsPanel({ settings, onUpdate, isOpen, onClose }: SettingsP
                 key={id}
                 onClick={() => onUpdate({ motionPreference: id })}
                 aria-pressed={settings.motionPreference === id}
-                className={`flex-1 min-h-[44px] px-2 py-2 rounded-full text-[11px] tracking-wider transition-all duration-300 focus-visible:ring-2 focus-visible:ring-amber-200/60 focus-visible:outline-none ${
-                  settings.motionPreference === id
-                    ? "bg-amber-200/12 text-amber-100/80 border border-amber-200/25"
-                    : "text-amber-100/40 border border-transparent hover:text-amber-100/60 hover:bg-white/5"
-                }`}
+                className={pillClass(settings.motionPreference === id)}
               >
                 {label}
               </button>
@@ -175,28 +233,46 @@ export function SettingsPanel({ settings, onUpdate, isOpen, onClose }: SettingsP
         </fieldset>
 
         {/* Keep controls visible */}
-        <div className="flex items-center justify-between">
-          <span className="text-amber-100/60 text-xs tracking-wider">Keep controls visible</span>
-          <button
-            role="switch"
-            aria-checked={settings.keepControlsVisible}
-            onClick={() => onUpdate({ keepControlsVisible: !settings.keepControlsVisible })}
-            className={`relative w-10 h-6 rounded-full transition-colors duration-300 focus-visible:ring-2 focus-visible:ring-amber-200/60 focus-visible:outline-none ${
-              settings.keepControlsVisible ? "bg-amber-200/25" : "bg-white/10"
-            }`}
-          >
-            <span
-              className={`absolute top-1 w-4 h-4 rounded-full transition-all duration-300 ${
-                settings.keepControlsVisible ? "left-5 bg-amber-200/70" : "left-1 bg-amber-100/30"
-              }`}
-            />
-          </button>
-        </div>
+        <ToggleSwitch
+          checked={settings.keepControlsVisible}
+          onChange={() => onUpdate({ keepControlsVisible: !settings.keepControlsVisible })}
+          label="Keep controls visible"
+        />
 
-        {/* General wellness note */}
-        <p className="text-amber-100/20 text-[10px] text-center pt-2 border-t border-amber-200/5">
-          Regulate is a general wellness tool, not a medical device.
-        </p>
+        {/* Announce rhythm changes */}
+        <ToggleSwitch
+          checked={settings.announceRhythm}
+          onChange={() => onUpdate({ announceRhythm: !settings.announceRhythm })}
+          label="Announce rhythm changes"
+          description="Screen reader announces rising/settling"
+        />
+
+        {/* Safety info link */}
+        <div className="pt-2 border-t border-amber-200/5">
+          <button
+            onClick={() => setShowSafety(!showSafety)}
+            className="text-amber-100/30 text-[10px] tracking-wider hover:text-amber-100/50 transition-colors focus-visible:ring-2 focus-visible:ring-amber-200/60 focus-visible:outline-none"
+            aria-expanded={showSafety}
+          >
+            {showSafety ? "Hide safety information" : "Review safety information"}
+          </button>
+
+          {showSafety && (
+            <div className="mt-3 text-amber-100/30 text-[10px] leading-relaxed space-y-2 animate-fadeIn">
+              <p>
+                Consult a qualified clinician before using slow-paced breathing
+                experiences if you are pregnant or have a relevant medical history.
+              </p>
+              <p>
+                {BRAND.name} does not replace professional medical or mental-health care.
+              </p>
+            </div>
+          )}
+
+          <p className="text-amber-100/20 text-[10px] text-center mt-3">
+            {BRAND.name} is a general wellness tool, not a medical device.
+          </p>
+        </div>
       </div>
     </div>
   );

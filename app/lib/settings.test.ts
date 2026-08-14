@@ -39,7 +39,7 @@ describe("loadSettings", () => {
     expect(result.binauralEnabled).toBe(DEFAULT_SETTINGS.binauralEnabled);
   });
 
-  it("loads all valid fields correctly", () => {
+  it("loads all valid fields correctly including new fields", () => {
     const custom = {
       rhythmPreset: "slower" as const,
       binauralEnabled: false,
@@ -49,9 +49,69 @@ describe("loadSettings", () => {
       volume: 0.5,
       brightness: 0.3,
       soundscape: "drift" as const,
+      pathway: "external-focus" as const,
+      audioReactivity: "reduced" as const,
+      cycleShape: "balanced" as const,
+      announceRhythm: true,
     };
     localStorage.setItem("regulate-settings", JSON.stringify(custom));
     expect(loadSettings()).toEqual(custom);
+  });
+
+  it("defaults new fields when absent from stored data", () => {
+    localStorage.setItem(
+      "regulate-settings",
+      JSON.stringify({ volume: 0.5, soundscape: "ground" }),
+    );
+    const result = loadSettings();
+    expect(result.pathway).toBe(DEFAULT_SETTINGS.pathway);
+    expect(result.audioReactivity).toBe(DEFAULT_SETTINGS.audioReactivity);
+    expect(result.cycleShape).toBe(DEFAULT_SETTINGS.cycleShape);
+    expect(result.announceRhythm).toBe(DEFAULT_SETTINGS.announceRhythm);
+  });
+
+  it("rejects invalid pathway values", () => {
+    localStorage.setItem("regulate-settings", JSON.stringify({ pathway: "invalid" }));
+    expect(loadSettings().pathway).toBe(DEFAULT_SETTINGS.pathway);
+  });
+
+  it("rejects invalid audioReactivity values", () => {
+    localStorage.setItem("regulate-settings", JSON.stringify({ audioReactivity: "max" }));
+    expect(loadSettings().audioReactivity).toBe(DEFAULT_SETTINGS.audioReactivity);
+  });
+
+  it("rejects invalid cycleShape values", () => {
+    localStorage.setItem("regulate-settings", JSON.stringify({ cycleShape: "fast-rise" }));
+    expect(loadSettings().cycleShape).toBe(DEFAULT_SETTINGS.cycleShape);
+  });
+
+  it("rejects non-boolean announceRhythm", () => {
+    localStorage.setItem("regulate-settings", JSON.stringify({ announceRhythm: "yes" }));
+    expect(loadSettings().announceRhythm).toBe(DEFAULT_SETTINGS.announceRhythm);
+  });
+
+  it("round-trips all valid pathway values", () => {
+    for (const p of ["ambient-rhythm", "external-focus"] as const) {
+      const s = { ...DEFAULT_SETTINGS, pathway: p };
+      saveSettings(s);
+      expect(loadSettings().pathway).toBe(p);
+    }
+  });
+
+  it("round-trips all valid audioReactivity values", () => {
+    for (const r of ["on", "reduced", "off"] as const) {
+      const s = { ...DEFAULT_SETTINGS, audioReactivity: r };
+      saveSettings(s);
+      expect(loadSettings().audioReactivity).toBe(r);
+    }
+  });
+
+  it("round-trips all valid cycleShape values", () => {
+    for (const c of ["longer-release", "balanced"] as const) {
+      const s = { ...DEFAULT_SETTINGS, cycleShape: c };
+      saveSettings(s);
+      expect(loadSettings().cycleShape).toBe(c);
+    }
   });
 });
 

@@ -1,7 +1,7 @@
-import type { SoundscapeId } from "../lib/settings";
+import type { SoundscapeId, Pathway, AudioReactivity } from "../lib/settings";
 import type { RhythmPresetId } from "../lib/regulation-clock";
 import { RHYTHM_PRESETS, getBreathHz } from "../lib/regulation-clock";
-import { SOUNDSCAPE_DESCRIPTIONS } from "../lib/constants";
+import { SOUNDSCAPE_DESCRIPTIONS, MASTER_SWELL_DEPTH } from "../lib/constants";
 
 export type AudioMode = SoundscapeId;
 
@@ -84,6 +84,9 @@ export class AudioEngine {
   private volumeLevel = 0.7;
   private rhythmPreset: RhythmPresetId = "steady";
   private binauralEnabled = true;
+  private pathway: Pathway = "ambient-rhythm";
+  private audioReactivity: AudioReactivity = "on";
+  private breathLfoGainNode: GainNode | null = null;
 
   private dryGain: GainNode | null = null;
   private wetGain: GainNode | null = null;
@@ -360,7 +363,9 @@ export class AudioEngine {
 
     const targetGain = this.volumeLevel * 0.5;
     const breathLfoGain = ctx.createGain();
-    breathLfoGain.gain.value = targetGain * 0.20;
+    const swellDepth = this.pathway === "external-focus" ? 0 : MASTER_SWELL_DEPTH;
+    breathLfoGain.gain.value = targetGain * swellDepth;
+    this.breathLfoGainNode = breathLfoGain;
 
     breathLfo.connect(breathLfoGain);
     breathLfoGain.connect(busGain.gain);
@@ -394,7 +399,7 @@ export class AudioEngine {
 
   async start(
     soundscape: SoundscapeId = "calm",
-    options?: { rhythmPreset?: RhythmPresetId; binauralEnabled?: boolean },
+    options?: { rhythmPreset?: RhythmPresetId; binauralEnabled?: boolean; pathway?: Pathway },
   ): Promise<void> {
     if (this.isPlaying) {
       await this.stop();
@@ -403,6 +408,7 @@ export class AudioEngine {
     this.currentSoundscape = soundscape;
     if (options?.rhythmPreset) this.rhythmPreset = options.rhythmPreset;
     if (options?.binauralEnabled !== undefined) this.binauralEnabled = options.binauralEnabled;
+    if (options?.pathway) this.pathway = options.pathway;
 
     const ctx = this.ensureContext();
     if (ctx.state === "suspended") {
@@ -515,7 +521,25 @@ export class AudioEngine {
     }
   }
 
+  setPathway(pathway: Pathway): void {
+    this.pathway = pathway;
+    if (!this.ctx || !this.breathLfoGainNode) return;
+    const targetGain = this.volumeLevel * 0.5;
+    const swellDepth = pathway === "external-focus" ? 0 : MASTER_SWELL_DEPTH;
+    const targetValue = targetGain * swellDepth;
+    if (targetValue < 0.001) {
+      this.breathLfoGainNode.gain.linearRampToValueAtTime(0, this.ctx.currentTime + 2);
+    } else {
+      this.breathLfoGainNode.gain.exponentialRampToValueAtTime(targetValue, this.ctx.currentTime + 2);
+    }
+  }
+
+  setAudioReactivity(reactivity: AudioReactivity): void {
+    this.audioReactivity = reactivity;
+  }
+
   getAudioLevel(): number {
+    if (this.audioReactivity === "off") return 0;
     if (!this.analyser) return 0;
     this.analyser.getFloatTimeDomainData(this.timeDomainData);
     let sumSquares = 0;
@@ -526,6 +550,7 @@ export class AudioEngine {
     const rms = Math.sqrt(sumSquares / this.timeDomainData.length);
     const normalized = Math.min(1, rms * 4);
     this.smoothedLevel = this.smoothedLevel * 0.8 + normalized * 0.2;
+    if (this.audioReactivity === "reduced") return this.smoothedLevel * 0.3;
     return this.smoothedLevel;
   }
 
@@ -571,6 +596,7 @@ export class AudioEngine {
     this.wetGain = null;
     this.convolver = null;
     this.smoothedLevel = 0;
+    this.breathLfoGainNode = null;
     this.isPlaying = false;
 
     // Suspend, don't close — reuse the context

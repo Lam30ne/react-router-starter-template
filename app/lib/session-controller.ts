@@ -3,6 +3,9 @@ import {
   FADE_IN_MS,
   WIND_DOWN_AT_MS,
   FADE_OUT_AT_MS,
+  TEN_MINUTE_DURATION_MS,
+  TEN_MINUTE_WIND_DOWN_AT_MS,
+  TEN_MINUTE_FADE_OUT_AT_MS,
 } from "./constants";
 
 export type SessionState =
@@ -13,16 +16,19 @@ export type SessionState =
   | "stopping"
   | "completed";
 
-export type SessionType = "reset" | "open";
+export type SessionDuration = "five-minute" | "ten-minute" | "open";
+
+/** @deprecated Use SessionDuration */
+export type SessionType = SessionDuration;
 
 export interface SessionCallbacks {
-  onStateChange: (state: SessionState, sessionType: SessionType) => void;
+  onStateChange: (state: SessionState, duration: SessionDuration) => void;
   onComplete?: () => void;
 }
 
 export class SessionController {
   private state: SessionState = "idle";
-  private sessionType: SessionType = "reset";
+  private duration: SessionDuration = "five-minute";
   private startTime = 0;
   private tickInterval: ReturnType<typeof setInterval> | null = null;
   private callbacks: SessionCallbacks;
@@ -35,8 +41,13 @@ export class SessionController {
     return this.state;
   }
 
-  getSessionType(): SessionType {
-    return this.sessionType;
+  getSessionDuration(): SessionDuration {
+    return this.duration;
+  }
+
+  /** @deprecated Use getSessionDuration() */
+  getSessionType(): SessionDuration {
+    return this.duration;
   }
 
   getElapsedMs(): number {
@@ -45,30 +56,37 @@ export class SessionController {
   }
 
   getProgress(): number {
-    if (this.sessionType !== "reset") return 0;
+    if (this.duration === "open") return 0;
     if (this.state === "completed") return 1;
     if (this.state === "idle") return 0;
-    return Math.min(1, this.getElapsedMs() / RESET_DURATION_MS);
+    const totalMs = this.duration === "ten-minute" ? TEN_MINUTE_DURATION_MS : RESET_DURATION_MS;
+    return Math.min(1, this.getElapsedMs() / totalMs);
   }
 
   getWindDownProgress(): number {
     if (this.state !== "winding-down") return 0;
     const elapsed = this.getElapsedMs();
-    const windDownDuration = FADE_OUT_AT_MS - WIND_DOWN_AT_MS;
-    return Math.min(1, Math.max(0, (elapsed - WIND_DOWN_AT_MS) / windDownDuration));
+    const windDownAt = this.duration === "ten-minute" ? TEN_MINUTE_WIND_DOWN_AT_MS : WIND_DOWN_AT_MS;
+    const fadeOutAt = this.duration === "ten-minute" ? TEN_MINUTE_FADE_OUT_AT_MS : FADE_OUT_AT_MS;
+    const windDownDuration = fadeOutAt - windDownAt;
+    return Math.min(1, Math.max(0, (elapsed - windDownAt) / windDownDuration));
   }
 
   startReset(): void {
-    if (this.state !== "idle" && this.state !== "completed") return;
-    this.sessionType = "reset";
-    this.startTime = performance.now();
-    this.setState("starting");
-    this.startTicking();
+    this.startSession("five-minute");
+  }
+
+  startTenMinuteReset(): void {
+    this.startSession("ten-minute");
   }
 
   startOpen(): void {
+    this.startSession("open");
+  }
+
+  private startSession(d: SessionDuration): void {
     if (this.state !== "idle" && this.state !== "completed") return;
-    this.sessionType = "open";
+    this.duration = d;
     this.startTime = performance.now();
     this.setState("starting");
     this.startTicking();
@@ -83,11 +101,7 @@ export class SessionController {
   replay(): void {
     this.stopTicking();
     this.state = "idle";
-    if (this.sessionType === "reset") {
-      this.startReset();
-    } else {
-      this.startOpen();
-    }
+    this.startSession(this.duration);
   }
 
   dispose(): void {
@@ -98,7 +112,7 @@ export class SessionController {
   private setState(next: SessionState): void {
     if (this.state === next) return;
     this.state = next;
-    this.callbacks.onStateChange(next, this.sessionType);
+    this.callbacks.onStateChange(next, this.duration);
     if (next === "completed") {
       this.callbacks.onComplete?.();
     }
@@ -121,31 +135,36 @@ export class SessionController {
 
     const elapsed = this.getElapsedMs();
 
-    // For reset sessions that entered stopping via the timer, check completion
-    if (this.state === "stopping" && this.sessionType === "reset" && elapsed >= RESET_DURATION_MS) {
-      this.stopTicking();
-      this.setState("completed");
-      return;
+    if (this.state === "stopping" && this.duration !== "open") {
+      const totalMs = this.duration === "ten-minute" ? TEN_MINUTE_DURATION_MS : RESET_DURATION_MS;
+      if (elapsed >= totalMs) {
+        this.stopTicking();
+        this.setState("completed");
+        return;
+      }
     }
 
     if (this.state === "stopping") return;
 
-    if (this.sessionType === "open") {
+    if (this.duration === "open") {
       if (this.state === "starting" && elapsed >= FADE_IN_MS) {
         this.setState("running");
       }
       return;
     }
 
+    const windDownAt = this.duration === "ten-minute" ? TEN_MINUTE_WIND_DOWN_AT_MS : WIND_DOWN_AT_MS;
+    const fadeOutAt = this.duration === "ten-minute" ? TEN_MINUTE_FADE_OUT_AT_MS : FADE_OUT_AT_MS;
+
     if (this.state === "starting" && elapsed >= FADE_IN_MS) {
       this.setState("running");
     }
 
-    if (this.state === "running" && elapsed >= WIND_DOWN_AT_MS) {
+    if (this.state === "running" && elapsed >= windDownAt) {
       this.setState("winding-down");
     }
 
-    if (this.state === "winding-down" && elapsed >= FADE_OUT_AT_MS) {
+    if (this.state === "winding-down" && elapsed >= fadeOutAt) {
       this.setState("stopping");
     }
   }

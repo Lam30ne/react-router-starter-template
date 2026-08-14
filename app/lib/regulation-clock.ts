@@ -1,4 +1,5 @@
 export type RhythmPresetId = "slower" | "steady" | "faster";
+export type CycleShape = "longer-release" | "balanced";
 
 export interface RhythmPreset {
   readonly label: string;
@@ -35,6 +36,29 @@ export function getBreathHz(preset: RhythmPresetId): number {
 export function getBreathPhase(elapsedMs: number, hz: number): number {
   const elapsedSeconds = elapsedMs / 1000;
   return 0.5 + 0.5 * Math.sin(elapsedSeconds * Math.PI * 2 * hz);
+}
+
+export function getShapedBreathPhase(
+  elapsedMs: number,
+  hz: number,
+  shape: CycleShape,
+): number {
+  if (shape === "balanced") {
+    return getBreathPhase(elapsedMs, hz);
+  }
+
+  const cycleDuration = 1 / hz;
+  const elapsedSeconds = elapsedMs / 1000;
+  const cyclePosition =
+    ((elapsedSeconds % cycleDuration) + cycleDuration) % cycleDuration;
+  const t = cyclePosition / cycleDuration;
+
+  const riseFraction = 0.4;
+
+  if (t < riseFraction) {
+    return 0.5 - 0.5 * Math.cos((Math.PI * t) / riseFraction);
+  }
+  return 0.5 + 0.5 * Math.cos((Math.PI * (t - riseFraction)) / (1 - riseFraction));
 }
 
 export function getBreathPulse(phase: number): number {

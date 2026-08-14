@@ -3,6 +3,7 @@ import {
   RHYTHM_PRESETS,
   getBreathHz,
   getBreathPhase,
+  getShapedBreathPhase,
   getBreathPulse,
   getCycleDurationMs,
 } from "./regulation-clock";
@@ -91,5 +92,74 @@ describe("getCycleDurationMs", () => {
   it("returns correct duration for default hz", () => {
     const hz = 5.7 / 60;
     expect(getCycleDurationMs(hz)).toBeCloseTo((60 / 5.7) * 1000, 1);
+  });
+});
+
+describe("getShapedBreathPhase", () => {
+  const hz = 0.095;
+  const cycleMs = (1 / hz) * 1000;
+
+  describe("balanced shape", () => {
+    it("matches getBreathPhase at t=0", () => {
+      expect(getShapedBreathPhase(0, hz, "balanced")).toBe(getBreathPhase(0, hz));
+    });
+
+    it("matches getBreathPhase at arbitrary time", () => {
+      const t = 3456;
+      expect(getShapedBreathPhase(t, hz, "balanced")).toBeCloseTo(getBreathPhase(t, hz), 10);
+    });
+  });
+
+  describe("longer-release shape", () => {
+    it("starts at 0 at t=0", () => {
+      expect(getShapedBreathPhase(0, hz, "longer-release")).toBeCloseTo(0, 5);
+    });
+
+    it("peaks at 40% of cycle", () => {
+      const peakMs = cycleMs * 0.4;
+      expect(getShapedBreathPhase(peakMs, hz, "longer-release")).toBeCloseTo(1.0, 5);
+    });
+
+    it("returns to 0 at end of cycle", () => {
+      const endMs = cycleMs * 0.9999;
+      expect(getShapedBreathPhase(endMs, hz, "longer-release")).toBeCloseTo(0.0, 2);
+    });
+
+    it("is periodic", () => {
+      const t = 2345;
+      expect(getShapedBreathPhase(t, hz, "longer-release")).toBeCloseTo(
+        getShapedBreathPhase(t + cycleMs, hz, "longer-release"),
+        5,
+      );
+    });
+
+    it("stays within 0..1 range", () => {
+      for (let t = 0; t < 100_000; t += 50) {
+        const phase = getShapedBreathPhase(t, hz, "longer-release");
+        expect(phase).toBeGreaterThanOrEqual(-0.001);
+        expect(phase).toBeLessThanOrEqual(1.001);
+      }
+    });
+
+    it("has continuous derivative at junction (40% mark)", () => {
+      const junctionMs = cycleMs * 0.4;
+      const delta = 0.1;
+      const before = getShapedBreathPhase(junctionMs - delta, hz, "longer-release");
+      const at = getShapedBreathPhase(junctionMs, hz, "longer-release");
+      const after = getShapedBreathPhase(junctionMs + delta, hz, "longer-release");
+      expect(Math.abs(at - before)).toBeLessThan(0.01);
+      expect(Math.abs(after - at)).toBeLessThan(0.01);
+    });
+
+    it("rise takes 40% of cycle, release takes 60%", () => {
+      const at20 = getShapedBreathPhase(cycleMs * 0.2, hz, "longer-release");
+      const at40 = getShapedBreathPhase(cycleMs * 0.4, hz, "longer-release");
+      const at70 = getShapedBreathPhase(cycleMs * 0.7, hz, "longer-release");
+      expect(at20).toBeGreaterThan(0);
+      expect(at20).toBeLessThan(1);
+      expect(at40).toBeCloseTo(1.0, 5);
+      expect(at70).toBeGreaterThan(0);
+      expect(at70).toBeLessThan(1);
+    });
   });
 });

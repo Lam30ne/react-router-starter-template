@@ -1,8 +1,8 @@
 import { SOUNDSCAPES } from "./audio-engine";
 import { SOUNDSCAPE_DESCRIPTIONS } from "../lib/constants";
 import { SessionIndicator, SessionAnnouncer } from "./session-indicator";
-import type { SoundscapeId } from "../lib/settings";
-import type { SessionState, SessionType } from "../lib/session-controller";
+import type { SoundscapeId, Pathway } from "../lib/settings";
+import type { SessionState, SessionDuration } from "../lib/session-controller";
 
 export function Controls({
   sessionState,
@@ -11,28 +11,34 @@ export function Controls({
   soundscape,
   volume,
   brightness,
+  pathway,
   onStartReset,
+  onStartTenMinuteReset,
   onStartOpen,
   onStop,
   onReplay,
   onSoundscapeChange,
   onVolumeChange,
   onBrightnessChange,
+  onPathwayChange,
   onOpenSettings,
 }: {
   sessionState: SessionState;
-  sessionType: SessionType;
+  sessionType: SessionDuration;
   progress: number;
   soundscape: SoundscapeId;
   volume: number;
   brightness: number;
+  pathway: Pathway;
   onStartReset: () => void;
+  onStartTenMinuteReset: () => void;
   onStartOpen: () => void;
   onStop: () => void;
   onReplay: () => void;
   onSoundscapeChange: (s: SoundscapeId) => void;
   onVolumeChange: (level: number) => void;
   onBrightnessChange: (level: number) => void;
+  onPathwayChange: (p: Pathway) => void;
   onOpenSettings: () => void;
 }) {
   const isActive = sessionState !== "idle" && sessionState !== "completed";
@@ -44,6 +50,27 @@ export function Controls({
       aria-label="Session and sound controls"
     >
       <SessionAnnouncer state={sessionState} />
+
+      {/* Pathway selector */}
+      <div className="flex gap-2 mb-3 px-4">
+        {([
+          { id: "ambient-rhythm" as const, label: "Ambient Rhythm" },
+          { id: "external-focus" as const, label: "External Focus" },
+        ]).map(({ id, label }) => (
+          <button
+            key={id}
+            onClick={() => onPathwayChange(id)}
+            aria-pressed={pathway === id}
+            className={`min-h-[44px] px-4 py-2 rounded-full text-xs font-light tracking-wider transition-all duration-500 focus-visible:ring-2 focus-visible:ring-amber-200/60 focus-visible:outline-none ${
+              pathway === id
+                ? "bg-amber-200/12 text-amber-100/70 border border-amber-200/20"
+                : "text-amber-100/30 border border-transparent hover:text-amber-100/50 hover:bg-white/5"
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
 
       {/* Soundscape selector */}
       <div className="flex flex-wrap justify-center gap-2 mb-5 px-4">
@@ -144,12 +171,20 @@ export function Controls({
           >
             Start 5-Minute Reset
           </button>
-          <button
-            onClick={onStartOpen}
-            className="min-h-[44px] px-5 py-2 rounded-full text-amber-100/40 text-xs font-light tracking-wider border border-amber-200/10 hover:text-amber-100/60 hover:bg-white/5 transition-all duration-300 focus-visible:ring-2 focus-visible:ring-amber-200/60 focus-visible:outline-none"
-          >
-            Open session
-          </button>
+          <div className="flex gap-3">
+            <button
+              onClick={onStartTenMinuteReset}
+              className="min-h-[44px] px-5 py-2 rounded-full text-amber-100/40 text-xs font-light tracking-wider border border-amber-200/10 hover:text-amber-100/60 hover:bg-white/5 transition-all duration-300 focus-visible:ring-2 focus-visible:ring-amber-200/60 focus-visible:outline-none"
+            >
+              10-Minute Reset
+            </button>
+            <button
+              onClick={onStartOpen}
+              className="min-h-[44px] px-5 py-2 rounded-full text-amber-100/40 text-xs font-light tracking-wider border border-amber-200/10 hover:text-amber-100/60 hover:bg-white/5 transition-all duration-300 focus-visible:ring-2 focus-visible:ring-amber-200/60 focus-visible:outline-none"
+            >
+              Open session
+            </button>
+          </div>
         </div>
       )}
 

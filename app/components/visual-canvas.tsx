@@ -1,8 +1,9 @@
 import { useEffect, useRef } from "react";
 import type { AudioEngine } from "./audio-engine";
-import type { SoundscapeId } from "../lib/settings";
+import type { SoundscapeId, Pathway, AudioReactivity } from "../lib/settings";
 import type { MotionPreference, ExperienceMode } from "../lib/settings";
-import { getBreathPhase } from "../lib/regulation-clock";
+import type { CycleShape } from "../lib/regulation-clock";
+import { getBreathPhase, getShapedBreathPhase } from "../lib/regulation-clock";
 import { getTimeOfDayShift } from "./time-palette";
 
 interface Particle {
@@ -90,6 +91,9 @@ export function VisualCanvas({
   motionPreference = "system",
   experienceMode = "audio-visuals",
   windDownProgress = 0,
+  pathway = "ambient-rhythm",
+  cycleShape = "longer-release",
+  audioReactivity = "on",
 }: {
   audioEngine: AudioEngine | null;
   isPlaying: boolean;
@@ -100,6 +104,9 @@ export function VisualCanvas({
   motionPreference?: MotionPreference;
   experienceMode?: ExperienceMode;
   windDownProgress?: number;
+  pathway?: Pathway;
+  cycleShape?: CycleShape;
+  audioReactivity?: AudioReactivity;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animFrameRef = useRef<number>(0);
@@ -113,6 +120,9 @@ export function VisualCanvas({
   const motionRef = useRef(motionPreference);
   const experienceRef = useRef(experienceMode);
   const windDownRef = useRef(windDownProgress);
+  const pathwayRef = useRef(pathway);
+  const cycleShapeRef = useRef(cycleShape);
+  const audioReactivityRef = useRef(audioReactivity);
 
   audioRef.current = audioEngine;
   isPlayingRef.current = isPlaying;
@@ -121,6 +131,9 @@ export function VisualCanvas({
   motionRef.current = motionPreference;
   experienceRef.current = experienceMode;
   windDownRef.current = windDownProgress;
+  pathwayRef.current = pathway;
+  cycleShapeRef.current = cycleShape;
+  audioReactivityRef.current = audioReactivity;
   if (visualIntensity !== undefined) {
     intensityRef.current = visualIntensity;
   }
@@ -398,7 +411,9 @@ export function VisualCanvas({
       accumulatedT += dt * (motion === "reduced" ? 0.03 : 0.15);
 
       const elapsedMs = now - startTime;
-      const breath = getBreathPhase(elapsedMs, rhythmHzRef.current);
+      const breath = pathwayRef.current === "external-focus"
+        ? 0.5
+        : getShapedBreathPhase(elapsedMs, rhythmHzRef.current, cycleShapeRef.current);
 
       let audioLevel = 0;
       if (curAudio && curPlaying) {
@@ -548,13 +563,17 @@ export function VisualCanvas({
         drawAurora(ctx, w, h, accumulatedT, pal, audioLevel, curBrightness, breath, windDownMult);
       }
 
-      // Breathing circle
+      // Breathing circle / steady anchor
       if (curPlaying) {
+        const circleAudio = motion === "reduced" || motion === "static" ? 0 : audioLevel;
+        const isExternalFocus = pathwayRef.current === "external-focus";
+        const isReduced = motion === "reduced";
         drawBreathingCircle(
           ctx, w, h, pal,
-          motion === "reduced" || motion === "static" ? 0 : audioLevel,
+          circleAudio,
           curBrightness,
-          breath,
+          isExternalFocus ? 0.5 : breath,
+          isExternalFocus || isReduced,
         );
       }
 
@@ -649,6 +668,7 @@ function drawBreathingCircle(
   audioLevel: number,
   brightnessMultiplier: number,
   breath: number,
+  steadyMode = false,
 ) {
   const cx = w / 2;
   const cy = h / 2;
@@ -656,7 +676,8 @@ function drawBreathingCircle(
   const breathPhase = breath * 2 - 1;
 
   const baseRadius = Math.min(w, h) * 0.12;
-  const radius = baseRadius * (0.8 + breathPhase * 0.2 + audioLevel * 0.1);
+  const scaleAmount = steadyMode ? 0.05 : 0.2;
+  const radius = baseRadius * (0.8 + breathPhase * scaleAmount + audioLevel * 0.1);
 
   ctx.save();
   ctx.globalCompositeOperation = "screen";

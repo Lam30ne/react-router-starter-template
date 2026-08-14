@@ -203,3 +203,172 @@ Internal reference for scientific and design rationales. Not for user-facing cop
 | **User-facing** | Permitted |
 | **Files** | `app/components/visual-canvas.tsx`, `app/lib/settings.ts` |
 | **Last reviewed** | 2026-08-13 |
+
+### R-016: Release-biased cycle shape (40/60)
+
+| Field | Value |
+|---|---|
+| **Hypothesis** | A longer release phase (60% of cycle) relative to rise (40%) may better support parasympathetic activation by encouraging prolonged exhalation |
+| **Implementation** | Piecewise cosine envelope: rise over 40% of cycle, release over 60%. Continuous value and first derivative at the junction. |
+| **Parameters** | `riseFraction = 0.4`, rise: `0.5 - 0.5 * cos(pi * t / 0.4)`, release: `0.5 + 0.5 * cos(pi * (t - 0.4) / 0.6)` |
+| **Confidence** | Literature-informed |
+| **User-facing** | Prohibited — do not claim "optimized breathing ratio" |
+| **Expert needed** | Respiratory physiology |
+| **Files** | `app/lib/regulation-clock.ts` |
+| **Evidence** | Extended exhalation is associated with vagal activation in resonance frequency breathing literature. Specific 40/60 ratio is a design choice, not a validated prescription. |
+| **Last reviewed** | 2026-08-14 |
+
+### R-017: Balanced cycle shape alternative (50/50)
+
+| Field | Value |
+|---|---|
+| **Hypothesis** | A symmetrical 50/50 cycle (standard sine) provides a simpler alternative for users who find the asymmetric shape uncomfortable |
+| **Implementation** | Standard sine wave via `getBreathPhase()`. Available as "Balanced" option in settings. |
+| **Confidence** | Design hypothesis |
+| **User-facing** | Permitted as setting label |
+| **Files** | `app/lib/regulation-clock.ts`, `app/components/settings-panel.tsx` |
+| **Last reviewed** | 2026-08-14 |
+
+### R-018: No breath holds
+
+| Field | Value |
+|---|---|
+| **Hypothesis** | Breath holds (pauses between inhale and exhale phases) can increase anxiety in some users, particularly those with trauma histories |
+| **Implementation** | Both cycle shapes transition smoothly between rise and release with no plateau or hold phase. Continuous first derivative ensures no sudden transitions. |
+| **Confidence** | Literature-informed |
+| **User-facing** | Prohibited — do not claim "trauma-safe breathing" |
+| **Expert needed** | Trauma-informed care specialist |
+| **Files** | `app/lib/regulation-clock.ts` |
+| **Evidence** | Breath holds are contraindicated in some trauma-informed breathing protocols. |
+| **Last reviewed** | 2026-08-14 |
+
+### R-019: Gentle breathing — no forceful techniques
+
+| Field | Value |
+|---|---|
+| **Hypothesis** | Passive, gentle rhythmic exposure is safer than active breathing techniques that require forceful inhalation or exhalation |
+| **Implementation** | The app provides ambient rhythm only; it does not instruct, coach, or count breaths. No inhale/exhale labels. |
+| **Confidence** | Design hypothesis |
+| **User-facing** | Permitted as general description ("ambient rhythm") |
+| **Files** | `app/components/visual-canvas.tsx`, `app/components/audio-engine.ts` |
+| **Last reviewed** | 2026-08-14 |
+
+### R-020: Lightheadedness risk from slow breathing
+
+| Field | Value |
+|---|---|
+| **Hypothesis** | Slow-paced breathing can cause lightheadedness or dizziness in some individuals, particularly at rates below 5 cpm |
+| **Implementation** | Default rate is 5.7 cpm (well within safe range). Slowest preset is 5.1 cpm. Safety onboarding warns about stopping if discomfort occurs. |
+| **Confidence** | Literature-informed |
+| **User-facing** | Safety warning in onboarding |
+| **Expert needed** | Respiratory physiology |
+| **Files** | `app/components/onboarding.tsx`, `app/lib/regulation-clock.ts` |
+| **Last reviewed** | 2026-08-14 |
+
+### R-021: Breath-focus distress in trauma populations
+
+| Field | Value |
+|---|---|
+| **Hypothesis** | Directing attention to breathing can trigger distress in individuals with trauma histories, particularly those with PTSD or panic disorder |
+| **Implementation** | External Focus pathway provides a non-breath alternative. Removes rhythmic swell from audio, replaces breathing circle with steady visual anchor. Sensory prompts direct attention outward. |
+| **Confidence** | Literature-informed |
+| **User-facing** | Prohibited — do not claim "trauma-safe" or "PTSD-appropriate" |
+| **Expert needed** | Trauma-informed care specialist, clinical psychologist |
+| **Files** | `app/components/onboarding.tsx`, `app/components/external-focus-prompts.tsx` |
+| **Evidence** | Clinical literature on interoceptive exposure and trauma suggests breath-focused practices can be triggering. External grounding techniques are a common alternative. |
+| **Last reviewed** | 2026-08-14 |
+
+### R-022: External Focus pathway
+
+| Field | Value |
+|---|---|
+| **Hypothesis** | An alternative pathway that directs attention to external sensory experience (rather than breath) provides a safer entry point for users who find breath-focus uncomfortable |
+| **Implementation** | "External Focus" pathway: master breathing LFO gain ramped to 0, visual circle uses steady mode (minimal scale modulation), optional sensory prompts rotate every 45s |
+| **Parameters** | LFO gain ramp to 0 over default ramp time; visual `steadyMode = true`; prompts: 3 rotating sensory observations |
+| **Confidence** | Design hypothesis |
+| **User-facing** | Permitted as pathway label |
+| **Expert needed** | Trauma-informed care specialist |
+| **Files** | `app/components/audio-engine.ts`, `app/components/visual-canvas.tsx`, `app/components/external-focus-prompts.tsx` |
+| **Last reviewed** | 2026-08-14 |
+
+### R-023: Ten-minute session duration
+
+| Field | Value |
+|---|---|
+| **Hypothesis** | A 10-minute option provides a longer reset for users who find 5 minutes insufficient, while remaining short enough to fit into a break |
+| **Implementation** | 10-minute reset with wind-down at 540s (9 min), fade-out at 595s (9:55), completion at 600s |
+| **Parameters** | `TEN_MINUTE_DURATION_MS = 600_000`, `TEN_MINUTE_WIND_DOWN_AT_MS = 540_000`, `TEN_MINUTE_FADE_OUT_AT_MS = 595_000` |
+| **Confidence** | Design hypothesis |
+| **User-facing** | Permitted |
+| **Files** | `app/lib/constants.ts`, `app/lib/session-controller.ts` |
+| **Last reviewed** | 2026-08-14 |
+
+### R-024: Master swell depth testability
+
+| Field | Value |
+|---|---|
+| **Hypothesis** | The master swell depth (currently 20%) should be easily adjustable for listening tests to find the optimal value |
+| **Implementation** | Named constant `MASTER_SWELL_DEPTH = 0.20` in constants.ts. `DEV_SWELL_OPTIONS = [0.10, 0.15, 0.20]` for A/B testing. |
+| **Confidence** | Observed implementation fact |
+| **User-facing** | Not applicable |
+| **Files** | `app/lib/constants.ts`, `app/components/audio-engine.ts` |
+| **Last reviewed** | 2026-08-14 |
+
+### R-025: Hard stereo separation concern
+
+| Field | Value |
+|---|---|
+| **Hypothesis** | Fully panned binaural tones (100% left, 100% right) may cause discomfort in some listeners |
+| **Implementation** | Binaural tones use full left/right separation. Binaural toggle allows disabling. |
+| **Confidence** | Plausible but unverified |
+| **User-facing** | Toggle available ("Binaural tones" with description "most noticeable with headphones") |
+| **Expert needed** | Psychoacoustics, audiology |
+| **Files** | `app/components/audio-engine.ts`, `app/components/settings-panel.tsx` |
+| **Last reviewed** | 2026-08-14 |
+
+### R-026: Accessibility alternatives to visual rhythm
+
+| Field | Value |
+|---|---|
+| **Hypothesis** | Screen reader users cannot perceive visual breathing rhythm and benefit from optional auditory announcements |
+| **Implementation** | Opt-in "Announce rhythm changes" setting. Uses aria-live polite region with "rising" / "settling" announcements. Throttled to one per half-cycle. |
+| **Confidence** | Observed implementation fact (accessibility requirement) |
+| **User-facing** | Permitted as setting label |
+| **Files** | `app/components/rhythm-announcer.tsx`, `app/components/settings-panel.tsx` |
+| **Last reviewed** | 2026-08-14 |
+
+### R-027: Static mode rendering optimization
+
+| Field | Value |
+|---|---|
+| **Hypothesis** | When motion is set to "static," continuous rendering wastes resources since the visual output doesn't change frame to frame |
+| **Implementation** | Static mode reduces visual content to background, vignette, rest basin, and breathing circle with minimal modulation. Particle count is 0, no aurora or fog. Animation loop continues but does minimal work. |
+| **Confidence** | Observed implementation fact |
+| **User-facing** | Not applicable |
+| **Files** | `app/components/visual-canvas.tsx` |
+| **Last reviewed** | 2026-08-14 |
+
+### R-028: Versioned onboarding
+
+| Field | Value |
+|---|---|
+| **Hypothesis** | Onboarding content may change as safety information evolves. A versioned key ensures users see updated onboarding when content changes significantly. |
+| **Implementation** | localStorage key `regulate-onboarding-v${ONBOARDING_VERSION}`. Incrementing `ONBOARDING_VERSION` re-shows onboarding to all users. |
+| **Parameters** | `ONBOARDING_VERSION = 1`, `ONBOARDING_STORAGE_KEY = "regulate-onboarding-v"` |
+| **Confidence** | Design hypothesis |
+| **User-facing** | Not applicable |
+| **Files** | `app/lib/constants.ts`, `app/components/onboarding.tsx` |
+| **Last reviewed** | 2026-08-14 |
+
+### R-029: Sensory grounding prompts
+
+| Field | Value |
+|---|---|
+| **Hypothesis** | Brief sensory observation prompts ("Notice one color around you") support external grounding and are a common technique in trauma-informed care |
+| **Implementation** | Three rotating prompts shown during External Focus sessions, changing every 45s with 3s fade transitions |
+| **Confidence** | Literature-informed |
+| **User-facing** | Permitted as presented (simple observational prompts, no clinical claims) |
+| **Expert needed** | Trauma-informed care specialist |
+| **Files** | `app/components/external-focus-prompts.tsx` |
+| **Evidence** | External sensory grounding is a standard technique in clinical trauma work (e.g., 5-4-3-2-1 grounding). Simplified to single-sense prompts for ambient context. |
+| **Last reviewed** | 2026-08-14 |

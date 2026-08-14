@@ -1,6 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { SessionController } from "./session-controller";
-import { RESET_DURATION_MS, FADE_IN_MS, WIND_DOWN_AT_MS, FADE_OUT_AT_MS } from "./constants";
+import {
+  RESET_DURATION_MS,
+  FADE_IN_MS,
+  WIND_DOWN_AT_MS,
+  FADE_OUT_AT_MS,
+  TEN_MINUTE_DURATION_MS,
+  TEN_MINUTE_WIND_DOWN_AT_MS,
+  TEN_MINUTE_FADE_OUT_AT_MS,
+} from "./constants";
 
 let onStateChange: ReturnType<typeof vi.fn>;
 let onComplete: ReturnType<typeof vi.fn>;
@@ -36,8 +44,8 @@ describe("reset session", () => {
   it("transitions to starting on startReset", () => {
     controller.startReset();
     expect(controller.getState()).toBe("starting");
-    expect(controller.getSessionType()).toBe("reset");
-    expect(onStateChange).toHaveBeenCalledWith("starting", "reset");
+    expect(controller.getSessionType()).toBe("five-minute");
+    expect(onStateChange).toHaveBeenCalledWith("starting", "five-minute");
   });
 
   it("transitions to running after FADE_IN_MS", () => {
@@ -135,7 +143,7 @@ describe("replay", () => {
     expect(controller.getState()).toBe("completed");
     controller.replay();
     expect(controller.getState()).toBe("starting");
-    expect(controller.getSessionType()).toBe("reset");
+    expect(controller.getSessionType()).toBe("five-minute");
   });
 });
 
@@ -144,5 +152,54 @@ describe("dispose", () => {
     controller.startReset();
     controller.dispose();
     expect(controller.getState()).toBe("idle");
+  });
+});
+
+describe("ten-minute reset session", () => {
+  it("transitions to starting on startTenMinuteReset", () => {
+    controller.startTenMinuteReset();
+    expect(controller.getState()).toBe("starting");
+    expect(controller.getSessionDuration()).toBe("ten-minute");
+    expect(onStateChange).toHaveBeenCalledWith("starting", "ten-minute");
+  });
+
+  it("transitions to running after FADE_IN_MS", () => {
+    controller.startTenMinuteReset();
+    vi.advanceTimersByTime(FADE_IN_MS + 250);
+    expect(controller.getState()).toBe("running");
+  });
+
+  it("transitions to winding-down after TEN_MINUTE_WIND_DOWN_AT_MS", () => {
+    controller.startTenMinuteReset();
+    vi.advanceTimersByTime(TEN_MINUTE_WIND_DOWN_AT_MS + 250);
+    expect(controller.getState()).toBe("winding-down");
+  });
+
+  it("transitions to stopping after TEN_MINUTE_FADE_OUT_AT_MS", () => {
+    controller.startTenMinuteReset();
+    vi.advanceTimersByTime(TEN_MINUTE_FADE_OUT_AT_MS + 250);
+    expect(controller.getState()).toBe("stopping");
+  });
+
+  it("transitions to completed after TEN_MINUTE_DURATION_MS", () => {
+    controller.startTenMinuteReset();
+    vi.advanceTimersByTime(TEN_MINUTE_DURATION_MS + 250);
+    expect(controller.getState()).toBe("completed");
+    expect(onComplete).toHaveBeenCalled();
+  });
+
+  it("returns correct progress at midpoint (300s)", () => {
+    controller.startTenMinuteReset();
+    vi.advanceTimersByTime(TEN_MINUTE_DURATION_MS / 2);
+    expect(controller.getProgress()).toBeCloseTo(0.5, 1);
+  });
+
+  it("replays ten-minute session from completed", () => {
+    controller.startTenMinuteReset();
+    vi.advanceTimersByTime(TEN_MINUTE_DURATION_MS + 250);
+    expect(controller.getState()).toBe("completed");
+    controller.replay();
+    expect(controller.getState()).toBe("starting");
+    expect(controller.getSessionDuration()).toBe("ten-minute");
   });
 });

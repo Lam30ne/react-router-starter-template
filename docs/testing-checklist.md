@@ -1,14 +1,28 @@
 # Regulate — Manual Testing Checklist
 
-## Session Model
+## Session Model — 5-Minute Reset
 - [ ] "Start 5-Minute Reset" begins a session with 5s audio fade-in
 - [ ] Session runs normally for ~4 minutes without interruption
 - [ ] Wind-down begins at ~4:15, visual density reduces gradually
 - [ ] Final fade at ~4:55, audio fades to silence
-- [ ] "Reset complete" appears with "Start again" and "Open session" options
-- [ ] "Open session" runs indefinitely until manually stopped
+- [ ] "Reset complete" appears with "Run again" and "Open session" options
 - [ ] Stop during any phase fades audio out over ~4 seconds
 - [ ] No countdown or timer dominates the screen
+
+## Session Model — 10-Minute Reset
+- [ ] "10-Minute Reset" button is visible as a secondary option
+- [ ] Session starts with same 5s audio fade-in
+- [ ] Session runs normally for ~9 minutes
+- [ ] Wind-down begins at ~9:00, visual density reduces gradually
+- [ ] Final fade at ~9:55, audio fades to silence
+- [ ] "Reset complete" appears at 10:00 with "Run again" and "Open session" options
+- [ ] Progress indicator shows correct time remaining (10:00 countdown)
+- [ ] Replay from completed state starts another 10-minute session
+
+## Session Model — Open Session
+- [ ] "Open session" runs indefinitely until manually stopped
+- [ ] No progress indicator during open session
+- [ ] No wind-down or completion state
 
 ## Soundscapes
 - [ ] Calm, Ground, Drift each produce distinct tonal palettes
@@ -19,13 +33,16 @@
 ## Settings
 - [ ] Settings panel opens from gear icon
 - [ ] Rhythm: Slower/Steady/Faster toggles work
+- [ ] Cycle shape: Longer release / Balanced toggles work
 - [ ] Binaural toggle mutes/unmutes the stereo offset tones
 - [ ] Experience: Audio+Visuals / Audio-only / Visuals-only each work
 - [ ] Audio-only shows dark background, no canvas rendering
 - [ ] Visuals-only runs visuals without creating AudioContext
+- [ ] Audio reactivity: On / Reduced / Off each take effect
 - [ ] Motion: System/Full/Reduced/Static each take effect without reload
 - [ ] Static removes particles, aurora, fog — breathing circle only
 - [ ] Keep controls visible prevents auto-hide
+- [ ] Announce rhythm changes toggle works with screen reader
 - [ ] All settings persist across page reloads (localStorage)
 - [ ] Corrupted localStorage values fallback to defaults
 
@@ -43,10 +60,11 @@
 ## Accessibility
 - [ ] All buttons have accessible names (check with screen reader)
 - [ ] All interactive targets are at least 44x44px
-- [ ] Tab order is logical: soundscapes → sliders → session buttons → settings
+- [ ] Tab order is logical: pathway → soundscapes → sliders → session buttons → settings
 - [ ] Volume/brightness sliders announce current value
 - [ ] Session start and completion are announced via aria-live
-- [ ] Hidden controls are marked inert (not focusable by screen reader)
+- [ ] Hidden controls remain in a11y tree (no inert attribute)
+- [ ] Keyboard focus on hidden control reveals the controls
 - [ ] Canvas has descriptive aria-label
 - [ ] Visible focus rings on all interactive elements
 - [ ] prefers-reduced-motion is respected (check System motion setting)
@@ -91,3 +109,55 @@
 - [ ] iOS PWA install and offline behavior
 - [ ] Android PWA install and offline behavior
 - [ ] Low-end device: adaptive quality degrades gracefully
+
+## Onboarding
+- [ ] First visit shows onboarding screen before any session
+- [ ] "Before you begin" heading is visible
+- [ ] Health warning text is displayed
+- [ ] Expandable safety details section works (expand/collapse)
+- [ ] Contraindications list is comprehensive and readable
+- [ ] "Start ambient reset" button dismisses and selects Ambient Rhythm pathway
+- [ ] "Use external focus" button dismisses and selects External Focus pathway
+- [ ] After dismissal, onboarding does not reappear on reload
+- [ ] Clearing localStorage key `regulate-onboarding-v1` re-shows onboarding
+- [ ] Incrementing ONBOARDING_VERSION re-shows onboarding for all users
+
+## External Focus Pathway
+- [ ] Selecting "External Focus" in controls changes the pathway
+- [ ] Audio: master breathing swell ramps to 0 (no rhythmic volume modulation)
+- [ ] Visual: breathing circle becomes steady (minimal scale modulation)
+- [ ] Sensory prompts appear during active External Focus sessions
+- [ ] Prompts rotate every ~45 seconds
+- [ ] Prompts fade in/out smoothly (3s transition)
+- [ ] Prompts are not shown when controls are hidden
+- [ ] Switching back to "Ambient Rhythm" restores rhythmic swell and breathing circle
+
+## Cycle Shape
+- [ ] Default cycle shape is "Longer release" (40/60 ratio)
+- [ ] "Balanced" option produces symmetrical 50/50 cycle
+- [ ] Visual breathing circle matches selected cycle shape
+- [ ] Switching cycle shape takes effect immediately during session
+- [ ] Setting persists across reloads
+
+## Audio Reactivity
+- [ ] Default audio reactivity is "On"
+- [ ] "Reduced" dampens audio influence on visuals
+- [ ] "Off" removes all audio influence on visuals
+- [ ] Switching during a session takes effect immediately
+- [ ] Setting persists across reloads
+
+## Rhythm Announcer
+- [ ] "Announce rhythm changes" toggle is off by default
+- [ ] When enabled during a session, screen reader announces "rising" and "settling"
+- [ ] Announcements occur at most once per half-cycle (no flooding)
+- [ ] When disabled, no announcements are made
+- [ ] Setting persists across reloads
+
+## Diagnostics Overlay
+- [ ] Overlay appears in development mode (`npm run dev`)
+- [ ] Overlay appears in production with `?diagnostics` query parameter
+- [ ] Overlay does not appear in production without query parameter
+- [ ] Overlay shows: session state, pathway, rhythm preset, cycle shape
+- [ ] Overlay shows: motion preference, audio reactivity, audio level, AudioContext state
+- [ ] Overlay is not interactive (pointer-events: none)
+- [ ] Overlay is hidden from screen readers (aria-hidden)

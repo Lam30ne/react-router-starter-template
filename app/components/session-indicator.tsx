@@ -1,8 +1,8 @@
-import type { SessionState, SessionType } from "../lib/session-controller";
+import type { SessionState, SessionDuration } from "../lib/session-controller";
 
 interface SessionIndicatorProps {
   state: SessionState;
-  sessionType: SessionType;
+  sessionType: SessionDuration;
   progress: number;
   onStartAgain: () => void;
   onOpenSession: () => void;
@@ -30,7 +30,7 @@ export function SessionIndicator({
             onClick={onStartAgain}
             className="min-h-[44px] px-5 py-2.5 rounded-full bg-amber-200/10 text-amber-100/70 text-xs font-light tracking-wider border border-amber-200/20 hover:bg-amber-200/15 transition-all duration-300 focus-visible:ring-2 focus-visible:ring-amber-200/60 focus-visible:outline-none"
           >
-            Start again
+            Run again
           </button>
           <button
             onClick={onOpenSession}
@@ -43,17 +43,17 @@ export function SessionIndicator({
     );
   }
 
-  if (sessionType !== "reset") return null;
+  if (sessionType === "open") return null;
   if (state === "idle") return null;
 
-  const remaining = Math.max(0, Math.ceil((1 - progress) * 300));
+  const totalSeconds = sessionType === "ten-minute" ? 600 : 300;
+  const remaining = Math.max(0, Math.ceil((1 - progress) * totalSeconds));
   const minutes = Math.floor(remaining / 60);
   const seconds = remaining % 60;
   const timeStr = `${minutes}:${seconds.toString().padStart(2, "0")}`;
 
   return (
     <div className="flex flex-col items-center gap-1">
-      {/* Thin progress arc */}
       <svg width="48" height="48" viewBox="0 0 48 48" className="opacity-40">
         <circle
           cx="24" cy="24" r="20"

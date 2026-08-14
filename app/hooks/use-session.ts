@@ -2,25 +2,26 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import {
   SessionController,
   type SessionState,
-  type SessionType,
+  type SessionDuration,
 } from "../lib/session-controller";
 
 interface UseSessionReturn {
   state: SessionState;
-  sessionType: SessionType;
+  sessionType: SessionDuration;
   progress: number;
   windDownProgress: number;
   startReset: () => void;
+  startTenMinuteReset: () => void;
   startOpen: () => void;
   stop: () => void;
   replay: () => void;
 }
 
 export function useSession(
-  onStateChange?: (state: SessionState, sessionType: SessionType) => void,
+  onStateChange?: (state: SessionState, duration: SessionDuration) => void,
 ): UseSessionReturn {
   const [state, setState] = useState<SessionState>("idle");
-  const [sessionType, setSessionType] = useState<SessionType>("reset");
+  const [sessionType, setSessionType] = useState<SessionDuration>("five-minute");
   const [progress, setProgress] = useState(0);
   const [windDownProgress, setWindDownProgress] = useState(0);
   const onStateChangeRef = useRef(onStateChange);
@@ -30,10 +31,10 @@ export function useSession(
 
   if (!controllerRef.current) {
     controllerRef.current = new SessionController({
-      onStateChange: (s, t) => {
+      onStateChange: (s, d) => {
         setState(s);
-        setSessionType(t);
-        onStateChangeRef.current?.(s, t);
+        setSessionType(d);
+        onStateChangeRef.current?.(s, d);
       },
     });
   }
@@ -56,9 +57,10 @@ export function useSession(
   }, []);
 
   const startReset = useCallback(() => controllerRef.current?.startReset(), []);
+  const startTenMinuteReset = useCallback(() => controllerRef.current?.startTenMinuteReset(), []);
   const startOpen = useCallback(() => controllerRef.current?.startOpen(), []);
   const stop = useCallback(() => controllerRef.current?.stop(), []);
   const replay = useCallback(() => controllerRef.current?.replay(), []);
 
-  return { state, sessionType, progress, windDownProgress, startReset, startOpen, stop, replay };
+  return { state, sessionType, progress, windDownProgress, startReset, startTenMinuteReset, startOpen, stop, replay };
 }

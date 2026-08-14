@@ -1,9 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
-import type { RhythmPresetId } from "./regulation-clock";
+import type { RhythmPresetId, CycleShape } from "./regulation-clock";
 
 export type SoundscapeId = "calm" | "ground" | "drift";
 export type ExperienceMode = "audio-visuals" | "audio-only" | "visuals-only";
 export type MotionPreference = "system" | "full" | "reduced" | "static";
+export type Pathway = "ambient-rhythm" | "external-focus";
+export type AudioReactivity = "on" | "reduced" | "off";
+export type SessionDuration = "five-minute" | "ten-minute" | "open";
 
 export interface UserSettings {
   rhythmPreset: RhythmPresetId;
@@ -14,6 +17,10 @@ export interface UserSettings {
   volume: number;
   brightness: number;
   soundscape: SoundscapeId;
+  pathway: Pathway;
+  audioReactivity: AudioReactivity;
+  cycleShape: CycleShape;
+  announceRhythm: boolean;
 }
 
 const STORAGE_KEY = "regulate-settings";
@@ -27,6 +34,10 @@ export const DEFAULT_SETTINGS: UserSettings = {
   volume: 0.7,
   brightness: 0.7,
   soundscape: "calm",
+  pathway: "ambient-rhythm",
+  audioReactivity: "on",
+  cycleShape: "longer-release",
+  announceRhythm: false,
 };
 
 export function loadSettings(): UserSettings {
@@ -44,6 +55,10 @@ export function loadSettings(): UserSettings {
       volume: isValidNumber(parsed.volume) ? parsed.volume : DEFAULT_SETTINGS.volume,
       brightness: isValidNumber(parsed.brightness) ? parsed.brightness : DEFAULT_SETTINGS.brightness,
       soundscape: isValidSoundscape(parsed.soundscape) ? parsed.soundscape : DEFAULT_SETTINGS.soundscape,
+      pathway: isValidPathway(parsed.pathway) ? parsed.pathway : DEFAULT_SETTINGS.pathway,
+      audioReactivity: isValidAudioReactivity(parsed.audioReactivity) ? parsed.audioReactivity : DEFAULT_SETTINGS.audioReactivity,
+      cycleShape: isValidCycleShape(parsed.cycleShape) ? parsed.cycleShape : DEFAULT_SETTINGS.cycleShape,
+      announceRhythm: typeof parsed.announceRhythm === "boolean" ? parsed.announceRhythm : DEFAULT_SETTINGS.announceRhythm,
     };
   } catch {
     return { ...DEFAULT_SETTINGS };
@@ -76,6 +91,18 @@ function isValidMotion(v: unknown): v is MotionPreference {
 
 function isValidNumber(v: unknown): v is number {
   return typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= 1;
+}
+
+function isValidPathway(v: unknown): v is Pathway {
+  return v === "ambient-rhythm" || v === "external-focus";
+}
+
+function isValidAudioReactivity(v: unknown): v is AudioReactivity {
+  return v === "on" || v === "reduced" || v === "off";
+}
+
+function isValidCycleShape(v: unknown): v is CycleShape {
+  return v === "longer-release" || v === "balanced";
 }
 
 export function useSettings(): [UserSettings, (update: Partial<UserSettings>) => void] {
