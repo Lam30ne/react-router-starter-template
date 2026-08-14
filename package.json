@@ -1,6 +1,6 @@
 {
 	"name": "regulate",
-	"description": "Nervous system regulation app with binaural beats and flowing visuals.",
+	"description": "Ambient soundscapes and flowing visuals for relaxation.",
 	"dependencies": {
 		"@react-router/node": "^7.13.2",
 		"isbot": "^5.1.32",
@@ -11,19 +11,26 @@
 	"devDependencies": {
 		"@react-router/dev": "^7.13.2",
 		"@tailwindcss/vite": "^4.1.17",
+		"@testing-library/jest-dom": "^6.6.3",
+		"@testing-library/react": "^16.3.0",
+		"@types/node": "^26.2.0",
 		"@types/react": "^19.0.0",
 		"@types/react-dom": "^19.0.0",
+		"jsdom": "^26.1.0",
 		"tailwindcss": "^4.1.17",
 		"typescript": "^5.9.3",
 		"vite": "^6.0.0",
-		"vite-tsconfig-paths": "^5.1.4"
+		"vite-tsconfig-paths": "^5.1.4",
+		"vitest": "^3.2.4"
 	},
 	"private": true,
 	"scripts": {
 		"build": "react-router build",
 		"dev": "react-router dev",
 		"preview": "npm run build && vite preview",
-		"typecheck": "react-router typegen && tsc -b"
+		"typecheck": "react-router typegen && tsc -b",
+		"test": "vitest run",
+		"test:watch": "vitest"
 	},
 	"type": "module"
 }

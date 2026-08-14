@@ -1,5 +1,4 @@
-// Time-of-day color shift for circadian alignment
-// Shifts palette warmer in the evening, amber at night to protect melatonin
+// Time-of-day color shift — warmer and dimmer at night
 
 export function getTimeOfDayShift(): {
   hueShift: number;

@@ -1,5 +1,9 @@
 import { useEffect, useRef } from "react";
-import type { AudioEngine, AudioMode } from "./audio-engine";
+import type { AudioEngine } from "./audio-engine";
+import type { SoundscapeId, Pathway, AudioReactivity } from "../lib/settings";
+import type { MotionPreference, ExperienceMode } from "../lib/settings";
+import type { CycleShape } from "../lib/regulation-clock";
+import { getBreathPhase, getShapedBreathPhase } from "../lib/regulation-clock";
 import { getTimeOfDayShift } from "./time-palette";
 
 interface Particle {
@@ -21,8 +25,10 @@ interface FlowField {
   field: number[];
 }
 
-const MODE_PALETTES: Record<
-  AudioMode,
+type QualityTier = "high" | "medium" | "low";
+
+const SOUNDSCAPE_PALETTES: Record<
+  SoundscapeId,
   { hueRange: [number, number]; saturation: number; brightness: number }
 > = {
   calm: { hueRange: [30, 50], saturation: 42, brightness: 58 },
@@ -30,8 +36,12 @@ const MODE_PALETTES: Record<
   drift: { hueRange: [25, 55], saturation: 32, brightness: 52 },
 };
 
-// Shared breath rhythm — all visual elements entrain to this
-const BREATH_HZ = 0.095; // ~5.7 breaths/min
+/** @deprecated Use SOUNDSCAPE_PALETTES */
+export const MODE_PALETTES = SOUNDSCAPE_PALETTES;
+
+const DAMPING_BASE = 0.92;
+const FORCE_STRENGTH = 4.2;
+const MAX_DELTA = 0.1;
 
 function isMobile(): boolean {
   if (typeof window === "undefined") return false;
@@ -41,12 +51,11 @@ function isMobile(): boolean {
 function createParticle(
   width: number,
   height: number,
-  palette: (typeof MODE_PALETTES)[AudioMode],
+  palette: (typeof SOUNDSCAPE_PALETTES)[SoundscapeId],
 ): Particle {
   const hue =
     palette.hueRange[0] +
     Math.random() * (palette.hueRange[1] - palette.hueRange[0]);
-  // Gaussian-biased spawn toward center (sum of 3 uniforms ≈ bell curve)
   const gx = (Math.random() + Math.random() + Math.random()) / 3;
   const gy = (Math.random() + Math.random() + Math.random()) / 3;
   return {
@@ -58,8 +67,18 @@ function createParticle(
     hue,
     alpha: 0,
     life: 0,
-    maxLife: 300 + Math.random() * 500,
+    maxLife: 5 + Math.random() * 8,
   };
+}
+
+function resolveMotion(pref: MotionPreference): "full" | "reduced" | "static" {
+  if (pref === "system") {
+    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      return "reduced";
+    }
+    return "full";
+  }
+  return pref;
 }
 
 export function VisualCanvas({
@@ -68,32 +87,57 @@ export function VisualCanvas({
   mode,
   brightness = 0.7,
   visualIntensity,
+  rhythmHz = 0.095,
+  motionPreference = "system",
+  experienceMode = "audio-visuals",
+  windDownProgress = 0,
+  pathway = "ambient-rhythm",
+  cycleShape = "longer-release",
+  audioReactivity = "on",
 }: {
   audioEngine: AudioEngine | null;
   isPlaying: boolean;
-  mode: AudioMode;
+  mode: SoundscapeId;
   brightness?: number;
   visualIntensity?: number;
+  rhythmHz?: number;
+  motionPreference?: MotionPreference;
+  experienceMode?: ExperienceMode;
+  windDownProgress?: number;
+  pathway?: Pathway;
+  cycleShape?: CycleShape;
+  audioReactivity?: AudioReactivity;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animFrameRef = useRef<number>(0);
 
-  // Store props in refs so animation loop always reads current values
   const audioRef = useRef(audioEngine);
   const isPlayingRef = useRef(isPlaying);
   const modeRef = useRef(mode);
   const brightnessRef = useRef(brightness);
   const intensityRef = useRef(visualIntensity ?? (isMobile() ? 0.5 : 0.65));
+  const rhythmHzRef = useRef(rhythmHz);
+  const motionRef = useRef(motionPreference);
+  const experienceRef = useRef(experienceMode);
+  const windDownRef = useRef(windDownProgress);
+  const pathwayRef = useRef(pathway);
+  const cycleShapeRef = useRef(cycleShape);
+  const audioReactivityRef = useRef(audioReactivity);
 
-  // Update refs when props change
   audioRef.current = audioEngine;
   isPlayingRef.current = isPlaying;
   brightnessRef.current = brightness;
+  rhythmHzRef.current = rhythmHz;
+  motionRef.current = motionPreference;
+  experienceRef.current = experienceMode;
+  windDownRef.current = windDownProgress;
+  pathwayRef.current = pathway;
+  cycleShapeRef.current = cycleShape;
+  audioReactivityRef.current = audioReactivity;
   if (visualIntensity !== undefined) {
     intensityRef.current = visualIntensity;
   }
 
-  // When mode changes, update ref and request particle refresh
   const particleRefreshRef = useRef(false);
   const prevModeRef = useRef(mode);
   if (mode !== prevModeRef.current) {
@@ -102,7 +146,6 @@ export function VisualCanvas({
     particleRefreshRef.current = true;
   }
 
-  // Single animation loop — created once, torn down on unmount
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -111,18 +154,50 @@ export function VisualCanvas({
     if (!ctx) return;
 
     const mobile = isMobile();
-    const reducedMotion =
-      typeof window !== "undefined" &&
-      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const skipAurora = mobile || reducedMotion;
     const flowResolution = mobile ? 30 : 20;
 
     let flowField: FlowField | null = null;
     let particles: Particle[] = [];
     let startTime = performance.now();
+    let lastFrameTime = startTime;
     let timeShift = getTimeOfDayShift();
-    let frameCount = 0;
+    let lastTimeShiftCheck = startTime;
+    let accumulatedT = 0;
     const glowCache = new Map<string, HTMLCanvasElement>();
+
+    // Adaptive quality
+    let qualityTier: QualityTier = mobile ? "medium" : "high";
+    const frameTimes: number[] = [];
+    let sustainedFrames = 0;
+    let pendingTier: QualityTier | null = null;
+
+    // Cached layers
+    let vignetteCache: HTMLCanvasElement | null = null;
+    let basinCache: HTMLCanvasElement | null = null;
+    let cachedBasinMode: SoundscapeId | null = null;
+    let cachedBasinBrightness = -1;
+
+    let paused = false;
+
+    // Motion preference listener
+    const motionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const onMotionChange = () => {
+      particleRefreshRef.current = true;
+    };
+    motionQuery.addEventListener("change", onMotionChange);
+
+    const getEffectiveMotion = (): "full" | "reduced" | "static" => resolveMotion(motionRef.current);
+
+    const getParticleCount = (w: number, h: number): number => {
+      const motion = getEffectiveMotion();
+      if (motion === "static") return 0;
+      const fullCount = Math.min(140, Math.floor((w * h) / 8000));
+      const tierMult = qualityTier === "high" ? 1.0 : qualityTier === "medium" ? 0.6 : 0.3;
+      if (motion === "reduced") return Math.min(25, Math.floor(fullCount * tierMult));
+      const intensity = intensityRef.current;
+      const base = mobile ? Math.min(50, Math.floor(fullCount * intensity)) : Math.floor(fullCount * intensity);
+      return Math.floor(base * tierMult);
+    };
 
     const initFlowField = (w: number, h: number) => {
       const cols = Math.ceil(w / flowResolution);
@@ -131,24 +206,69 @@ export function VisualCanvas({
     };
 
     const initParticles = (w: number, h: number) => {
-      const palette = MODE_PALETTES[modeRef.current];
-      const intensity = intensityRef.current;
-      const fullCount = Math.min(140, Math.floor((w * h) / 8000));
-      const count = reducedMotion
-        ? Math.min(25, fullCount)
-        : mobile
-          ? Math.min(50, Math.floor(fullCount * intensity))
-          : Math.floor(fullCount * intensity);
+      const palette = SOUNDSCAPE_PALETTES[modeRef.current];
+      const count = getParticleCount(w, h);
       particles = Array.from({ length: count }, () => createParticle(w, h, palette));
       glowCache.clear();
       startTime = performance.now();
+      lastFrameTime = startTime;
+      accumulatedT = 0;
     };
 
+    const buildVignetteCache = (w: number, h: number) => {
+      const off = document.createElement("canvas");
+      off.width = w;
+      off.height = h;
+      const offCtx = off.getContext("2d");
+      if (!offCtx) return null;
+      const cx = w / 2;
+      const cy = h / 2;
+      const maxDist = Math.sqrt(cx * cx + cy * cy);
+      const grad = offCtx.createRadialGradient(cx, cy, maxDist * 0.35, cx, cy, maxDist);
+      grad.addColorStop(0, "rgba(10, 7, 3, 0)");
+      grad.addColorStop(1, "rgba(10, 7, 3, 0.12)");
+      offCtx.fillStyle = grad;
+      offCtx.fillRect(0, 0, w, h);
+      return off;
+    };
+
+    const buildBasinCache = (w: number, h: number, pal: typeof SOUNDSCAPE_PALETTES.calm, curBrightness: number) => {
+      const off = document.createElement("canvas");
+      off.width = w;
+      off.height = h;
+      const offCtx = off.getContext("2d");
+      if (!offCtx) return null;
+      const cx = w / 2;
+      const cy = h / 2;
+      const basinRadius = Math.min(w, h) * 0.35;
+      const basinHue = (pal.hueRange[0] + pal.hueRange[1]) / 2;
+      const grad = offCtx.createRadialGradient(cx, cy, 0, cx, cy, basinRadius);
+      grad.addColorStop(0, `hsla(${basinHue}, ${pal.saturation * 0.5}%, ${pal.brightness * 0.4}%, ${0.03 * curBrightness})`);
+      grad.addColorStop(0.6, `hsla(${basinHue}, ${pal.saturation * 0.3}%, ${pal.brightness * 0.3}%, ${0.015 * curBrightness})`);
+      grad.addColorStop(1, `hsla(${basinHue}, ${pal.saturation * 0.2}%, ${pal.brightness * 0.2}%, 0)`);
+      offCtx.fillStyle = grad;
+      offCtx.beginPath();
+      offCtx.arc(cx, cy, basinRadius, 0, Math.PI * 2);
+      offCtx.fill();
+      return off;
+    };
+
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
     const resize = () => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-      initFlowField(canvas.width, canvas.height);
-      initParticles(canvas.width, canvas.height);
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      const effectiveDpr = qualityTier === "low" ? Math.min(dpr, 1.5) : dpr;
+      canvas.width = Math.round(w * effectiveDpr);
+      canvas.height = Math.round(h * effectiveDpr);
+      canvas.style.width = w + "px";
+      canvas.style.height = h + "px";
+      ctx.setTransform(effectiveDpr, 0, 0, effectiveDpr, 0, 0);
+      initFlowField(w, h);
+      initParticles(w, h);
+      vignetteCache = buildVignetteCache(w, h);
+      basinCache = null;
+      cachedBasinMode = null;
     };
     resize();
     window.addEventListener("resize", resize);
@@ -193,33 +313,92 @@ export function VisualCanvas({
       return offscreen;
     };
 
-    const animate = () => {
-      const w = canvas.width;
-      const h = canvas.height;
+    const updateQuality = (dt: number) => {
+      frameTimes.push(dt);
+      if (frameTimes.length > 30) frameTimes.shift();
+      if (frameTimes.length < 10) return;
+
+      const avgDt = frameTimes.reduce((a, b) => a + b, 0) / frameTimes.length;
+      const fps = 1 / avgDt;
+
+      let target: QualityTier;
+      if (fps > 45) target = "high";
+      else if (fps > 30) target = "medium";
+      else target = "low";
+
+      if (target === qualityTier) {
+        sustainedFrames = 0;
+        pendingTier = null;
+        return;
+      }
+
+      if (target === pendingTier) {
+        sustainedFrames++;
+        if (sustainedFrames >= 60) {
+          qualityTier = target;
+          sustainedFrames = 0;
+          pendingTier = null;
+          const w = window.innerWidth;
+          const h = window.innerHeight;
+          const newCount = getParticleCount(w, h);
+          if (newCount < particles.length) {
+            particles.length = newCount;
+          }
+        }
+      } else {
+        pendingTier = target;
+        sustainedFrames = 0;
+      }
+    };
+
+    const animate = (now: number) => {
+      if (paused) return;
+
+      const rawDt = (now - lastFrameTime) / 1000;
+      const dt = Math.min(rawDt, MAX_DELTA);
+      lastFrameTime = now;
+
+      const w = window.innerWidth;
+      const h = window.innerHeight;
       const curMode = modeRef.current;
       const curBrightness = brightnessRef.current;
       const curPlaying = isPlayingRef.current;
       const curAudio = audioRef.current;
+      const motion = getEffectiveMotion();
+      const curWindDown = windDownRef.current;
+      const windDownMult = 1 - curWindDown * 0.6;
 
-      // Refresh particles on mode change (softer: only >70% life)
+      updateQuality(dt);
+
       if (particleRefreshRef.current) {
         particleRefreshRef.current = false;
-        const palette = MODE_PALETTES[curMode];
+        const palette = SOUNDSCAPE_PALETTES[curMode];
+        const targetCount = getParticleCount(w, h);
         for (let i = 0; i < particles.length; i++) {
           if (particles[i].life > particles[i].maxLife * 0.7) {
             particles[i] = createParticle(w, h, palette);
           }
         }
+        if (targetCount !== particles.length) {
+          if (targetCount < particles.length) {
+            particles.length = targetCount;
+          } else {
+            while (particles.length < targetCount) {
+              particles.push(createParticle(w, h, palette));
+            }
+          }
+        }
         glowCache.clear();
+        basinCache = null;
+        cachedBasinMode = null;
       }
 
-      // Refresh time-of-day shift every ~60s
-      frameCount++;
-      if (frameCount % 3600 === 0) {
+      if (now - lastTimeShiftCheck > 60_000) {
         timeShift = getTimeOfDayShift();
+        lastTimeShiftCheck = now;
       }
 
-      const basePal = MODE_PALETTES[curMode];
+      const basePal = SOUNDSCAPE_PALETTES[curMode];
       const pal = {
         hueRange: [
           basePal.hueRange[0] + timeShift.hueShift,
@@ -229,184 +408,201 @@ export function VisualCanvas({
         brightness: Math.round(basePal.brightness * timeShift.brightnessMult),
       };
 
-      const elapsedSeconds = (performance.now() - startTime) / 1000;
-      const t = elapsedSeconds * (reducedMotion ? 0.03 : 0.15);
+      accumulatedT += dt * (motion === "reduced" ? 0.03 : 0.15);
 
-      // Shared breath phase — drives the whole scene
-      const breath = 0.5 + 0.5 * Math.sin(elapsedSeconds * Math.PI * 2 * BREATH_HZ);
+      const elapsedMs = now - startTime;
+      const breath = pathwayRef.current === "external-focus"
+        ? 0.5
+        : getShapedBreathPhase(elapsedMs, rhythmHzRef.current, cycleShapeRef.current);
 
       let audioLevel = 0;
       if (curAudio && curPlaying) {
-        audioLevel = curAudio.getAverageFrequency();
+        audioLevel = curAudio.getAudioLevel();
       }
-      // Reinterpret audio as slow modulation, not jittery reactivity
       const audioBreath = 0.85 + audioLevel * 0.15;
 
-      // Trail fade — stable, no audio flicker
-      ctx.fillStyle = `rgba(15, 10, 5, 0.05)`;
+      // Trail fade (time-based)
+      const trailAlpha = Math.min(1, 0.05 * dt * 60);
+      ctx.fillStyle = `rgba(15, 10, 5, ${trailAlpha})`;
       ctx.fillRect(0, 0, w, h);
 
       const centerX = w / 2;
       const centerY = h / 2;
       const maxDist = Math.sqrt(centerX * centerX + centerY * centerY);
 
-      // Vignette — darken periphery
-      const vigGrad = ctx.createRadialGradient(centerX, centerY, maxDist * 0.35, centerX, centerY, maxDist);
-      vigGrad.addColorStop(0, "rgba(10, 7, 3, 0)");
-      vigGrad.addColorStop(1, "rgba(10, 7, 3, 0.12)");
-      ctx.fillStyle = vigGrad;
-      ctx.fillRect(0, 0, w, h);
+      // Vignette (cached)
+      if (vignetteCache) {
+        ctx.drawImage(vignetteCache, 0, 0);
+      }
 
-      // Breath-entrained background luminance wash
+      // Breath luminance wash
       ctx.fillStyle = `rgba(25, 18, 10, ${breath * 0.008})`;
       ctx.fillRect(0, 0, w, h);
 
-      // Rest basin — soft central haze
-      const basinRadius = Math.min(w, h) * 0.35;
-      const basinGrad = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, basinRadius);
-      const basinHue = (pal.hueRange[0] + pal.hueRange[1]) / 2;
-      basinGrad.addColorStop(0, `hsla(${basinHue}, ${pal.saturation * 0.5}%, ${pal.brightness * 0.4}%, ${0.03 * curBrightness})`);
-      basinGrad.addColorStop(0.6, `hsla(${basinHue}, ${pal.saturation * 0.3}%, ${pal.brightness * 0.3}%, ${0.015 * curBrightness})`);
-      basinGrad.addColorStop(1, `hsla(${basinHue}, ${pal.saturation * 0.2}%, ${pal.brightness * 0.2}%, 0)`);
-      ctx.fillStyle = basinGrad;
-      ctx.beginPath();
-      ctx.arc(centerX, centerY, basinRadius, 0, Math.PI * 2);
-      ctx.fill();
+      // Rest basin (cached per mode+brightness)
+      if (cachedBasinMode !== curMode || Math.abs(cachedBasinBrightness - curBrightness) > 0.05) {
+        basinCache = buildBasinCache(w, h, pal, curBrightness);
+        cachedBasinMode = curMode;
+        cachedBasinBrightness = curBrightness;
+      }
+      if (basinCache) {
+        ctx.drawImage(basinCache, 0, 0);
+      }
 
-      // Update flow field — two-scale structure (every 2nd frame on mobile)
-      if (flowField && (!mobile || frameCount % 2 === 0)) {
+      // Flow field update (time-based)
+      if (flowField && motion !== "static") {
+        const t = accumulatedT;
         for (let y = 0; y < flowField.rows; y++) {
           for (let x = 0; x < flowField.cols; x++) {
             const idx = y * flowField.cols + x;
             const nx = x * 0.02 + t * 0.5;
             const ny = y * 0.02 + t * 0.3;
-            // Large-scale drift: slow, directional
             const largeDrift =
               Math.sin(nx * 0.3 + t * 0.2) * 1.5 +
               Math.cos(ny * 0.25 + t * 0.15) * 1.2;
-            // Subtle local turbulence: gentle, organic
             const localTurb = Math.sin(nx * 1.2 + ny * 0.9 + t * 0.4) * 0.4;
             flowField.field[idx] = largeDrift + localTurb;
           }
         }
       }
 
-      // Fractal fog — large soft blobs behind particles
-      ctx.save();
-      ctx.globalCompositeOperation = "screen";
-      for (let i = 0; i < 3; i++) {
-        const fogX = centerX + Math.sin(t * 0.12 + i * 2.1) * w * 0.2;
-        const fogY = centerY + Math.cos(t * 0.09 + i * 1.7) * h * 0.15;
-        const fogRadius = Math.min(w, h) * (0.15 + i * 0.05);
-        const fogHue = pal.hueRange[0] + i * 5;
-        const fogAlpha = (0.015 + i * 0.005) * curBrightness * audioBreath;
-        const fogGrad = ctx.createRadialGradient(fogX, fogY, 0, fogX, fogY, fogRadius);
-        fogGrad.addColorStop(0, `hsla(${fogHue}, ${pal.saturation * 0.4}%, ${pal.brightness * 0.5}%, ${fogAlpha})`);
-        fogGrad.addColorStop(0.5, `hsla(${fogHue}, ${pal.saturation * 0.3}%, ${pal.brightness * 0.4}%, ${fogAlpha * 0.4})`);
-        fogGrad.addColorStop(1, `hsla(${fogHue}, ${pal.saturation * 0.2}%, ${pal.brightness * 0.3}%, 0)`);
-        ctx.beginPath();
-        ctx.arc(fogX, fogY, fogRadius, 0, Math.PI * 2);
-        ctx.fillStyle = fogGrad;
-        ctx.fill();
-      }
-      ctx.restore();
-
-      // Draw and update particles
-      for (let i = 0; i < particles.length; i++) {
-        const p = particles[i];
-        p.life++;
-
-        const lifeRatio = p.life / p.maxLife;
-        if (lifeRatio < 0.1) {
-          p.alpha = lifeRatio / 0.1;
-        } else if (lifeRatio > 0.85) {
-          p.alpha = (1 - lifeRatio) / 0.15;
-        } else {
-          p.alpha = 1;
+      // Fractal fog
+      if (motion !== "static" && qualityTier !== "low") {
+        const t = accumulatedT;
+        ctx.save();
+        ctx.globalCompositeOperation = "screen";
+        for (let i = 0; i < 3; i++) {
+          const fogX = centerX + Math.sin(t * 0.12 + i * 2.1) * w * 0.2;
+          const fogY = centerY + Math.cos(t * 0.09 + i * 1.7) * h * 0.15;
+          const fogRadius = Math.min(w, h) * (0.15 + i * 0.05);
+          const fogHue = pal.hueRange[0] + i * 5;
+          const fogAlpha = (0.015 + i * 0.005) * curBrightness * audioBreath * windDownMult;
+          const fogGrad = ctx.createRadialGradient(fogX, fogY, 0, fogX, fogY, fogRadius);
+          fogGrad.addColorStop(0, `hsla(${fogHue}, ${pal.saturation * 0.4}%, ${pal.brightness * 0.5}%, ${fogAlpha})`);
+          fogGrad.addColorStop(0.5, `hsla(${fogHue}, ${pal.saturation * 0.3}%, ${pal.brightness * 0.4}%, ${fogAlpha * 0.4})`);
+          fogGrad.addColorStop(1, `hsla(${fogHue}, ${pal.saturation * 0.2}%, ${pal.brightness * 0.3}%, 0)`);
+          ctx.beginPath();
+          ctx.arc(fogX, fogY, fogRadius, 0, Math.PI * 2);
+          ctx.fillStyle = fogGrad;
+          ctx.fill();
         }
+        ctx.restore();
+      }
 
-        if (flowField) {
-          const col = Math.floor(p.x / flowField.resolution);
-          const row = Math.floor(p.y / flowField.resolution);
-          if (col >= 0 && col < flowField.cols && row >= 0 && row < flowField.rows) {
-            const angle = flowField.field[row * flowField.cols + col];
-            p.vx += Math.cos(angle) * 0.07;
-            p.vy += Math.sin(angle) * 0.07;
+      // Particles (time-based)
+      if (motion !== "static") {
+        for (let i = 0; i < particles.length; i++) {
+          const p = particles[i];
+          p.life += dt;
+
+          const lifeRatio = p.life / p.maxLife;
+          if (lifeRatio < 0.1) {
+            p.alpha = lifeRatio / 0.1;
+          } else if (lifeRatio > 0.85) {
+            p.alpha = (1 - lifeRatio) / 0.15;
+          } else {
+            p.alpha = 1;
           }
+
+          if (flowField) {
+            const col = Math.floor(p.x / flowField.resolution);
+            const row = Math.floor(p.y / flowField.resolution);
+            if (col >= 0 && col < flowField.cols && row >= 0 && row < flowField.rows) {
+              const angle = flowField.field[row * flowField.cols + col];
+              p.vx += Math.cos(angle) * FORCE_STRENGTH * dt;
+              p.vy += Math.sin(angle) * FORCE_STRENGTH * dt;
+            }
+          }
+
+          // Frame-rate independent damping
+          const dampFactor = Math.pow(DAMPING_BASE, dt * 60);
+          p.vx *= dampFactor;
+          p.vy *= dampFactor;
+          p.x += p.vx * dt * 60;
+          p.y += p.vy * dt * 60;
+
+          if (p.x < 0) p.x = w;
+          if (p.x > w) p.x = 0;
+          if (p.y < 0) p.y = h;
+          if (p.y > h) p.y = 0;
+
+          if (p.life >= p.maxLife) {
+            particles[i] = createParticle(w, h, pal);
+            continue;
+          }
+
+          const dx = p.x - centerX;
+          const dy = p.y - centerY;
+          const distFromCenter = Math.sqrt(dx * dx + dy * dy);
+          const distNorm = distFromCenter / maxDist;
+          const horizonFactor = Math.max(0, 1 - Math.pow(distNorm, 1.8) * 0.85);
+
+          const breathAlpha = 0.85 + breath * 0.15;
+          const breathRadius = 0.92 + breath * 0.08;
+
+          const effectiveAlpha =
+            p.alpha * (0.75 + audioLevel * 0.15) * horizonFactor * curBrightness * breathAlpha * windDownMult;
+          const effectiveRadius = p.radius * (1 + audioLevel * 0.3) * breathRadius * horizonFactor;
+          const effectiveSaturation = Math.round(pal.saturation * (0.55 + horizonFactor * 0.25));
+          const effectiveBrightness = Math.round(pal.brightness * (0.75 + horizonFactor * 0.2));
+
+          const sprite = getGlowSprite(
+            effectiveRadius,
+            p.hue + timeShift.hueShift,
+            effectiveSaturation,
+            effectiveBrightness,
+            effectiveAlpha,
+          );
+          ctx.drawImage(sprite, p.x - sprite.width / 2, p.y - sprite.height / 2);
         }
-
-        p.vx *= 0.92;
-        p.vy *= 0.92;
-        p.x += p.vx;
-        p.y += p.vy;
-
-        if (p.x < 0) p.x = w;
-        if (p.x > w) p.x = 0;
-        if (p.y < 0) p.y = h;
-        if (p.y > h) p.y = 0;
-
-        if (p.life >= p.maxLife) {
-          particles[i] = createParticle(w, h, pal);
-          continue;
-        }
-
-        const dx = p.x - centerX;
-        const dy = p.y - centerY;
-        const distFromCenter = Math.sqrt(dx * dx + dy * dy);
-        const distNorm = distFromCenter / maxDist;
-        // Stronger edge falloff — pow(1.8) gives aggressive periphery dimming
-        const horizonFactor = Math.max(0, 1 - Math.pow(distNorm, 1.8) * 0.85);
-
-        // Breath-entrained alpha and radius
-        const breathAlpha = 0.85 + breath * 0.15;
-        const breathRadius = 0.92 + breath * 0.08;
-
-        const effectiveAlpha =
-          p.alpha * (0.75 + audioLevel * 0.15) * horizonFactor * curBrightness * breathAlpha;
-        const effectiveRadius = p.radius * (1 + audioLevel * 0.3) * breathRadius * horizonFactor;
-        const effectiveSaturation = Math.round(
-          pal.saturation * (0.55 + horizonFactor * 0.25),
-        );
-        const effectiveBrightness = Math.round(
-          pal.brightness * (0.75 + horizonFactor * 0.2),
-        );
-
-        const sprite = getGlowSprite(
-          effectiveRadius,
-          p.hue + timeShift.hueShift,
-          effectiveSaturation,
-          effectiveBrightness,
-          effectiveAlpha,
-        );
-        ctx.drawImage(sprite, p.x - sprite.width / 2, p.y - sprite.height / 2);
       }
 
-      // Aurora — skip on mobile and reduced motion
+      // Aurora
+      const skipAurora = motion !== "full" || qualityTier === "low";
       if (!skipAurora) {
-        drawAurora(ctx, w, h, t, pal, audioLevel, curBrightness, breath);
+        drawAurora(ctx, w, h, accumulatedT, pal, audioLevel, curBrightness, breath, windDownMult);
       }
 
-      // Breathing circle
+      // Breathing circle / steady anchor
       if (curPlaying) {
+        const circleAudio = motion === "reduced" || motion === "static" ? 0 : audioLevel;
+        const isExternalFocus = pathwayRef.current === "external-focus";
+        const isReduced = motion === "reduced";
         drawBreathingCircle(
           ctx, w, h, pal,
-          reducedMotion ? 0 : audioLevel,
+          circleAudio,
           curBrightness,
-          breath,
+          isExternalFocus ? 0.5 : breath,
+          isExternalFocus || isReduced,
         );
       }
 
       animFrameRef.current = requestAnimationFrame(animate);
     };
 
+    // Visibility handling
+    const onVisibility = () => {
+      if (document.hidden) {
+        paused = true;
+        cancelAnimationFrame(animFrameRef.current);
+      } else {
+        paused = false;
+        lastFrameTime = performance.now();
+        animFrameRef.current = requestAnimationFrame(animate);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
     animFrameRef.current = requestAnimationFrame(animate);
 
     return () => {
       window.removeEventListener("resize", resize);
+      document.removeEventListener("visibilitychange", onVisibility);
+      motionQuery.removeEventListener("change", onMotionChange);
       cancelAnimationFrame(animFrameRef.current);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Created once, reads from refs
+  }, []);
 
   return (
     <canvas
@@ -414,7 +610,7 @@ export function VisualCanvas({
       className="fixed inset-0 w-full h-full"
       style={{ background: "#0f0a05" }}
       role="img"
-      aria-label="Ambient visualization with flowing particles and a breathing circle"
+      aria-label="Ambient visualization with flowing particles and gentle breathing glow"
     />
   );
 }
@@ -426,13 +622,12 @@ function drawAurora(
   audioLevel: number,
   brightnessMultiplier: number,
   breath: number,
+  windDownMult: number,
 ) {
   ctx.save();
   ctx.globalCompositeOperation = "screen";
-  // Softer aurora: lower base alpha, breath-entrained
-  ctx.globalAlpha = (0.02 + audioLevel * 0.01) * brightnessMultiplier * (0.8 + breath * 0.2);
+  ctx.globalAlpha = (0.02 + audioLevel * 0.01) * brightnessMultiplier * (0.8 + breath * 0.2) * windDownMult;
 
-  // Reduced to 2 bands (from 3)
   for (let i = 0; i < 2; i++) {
     const yBase = h * (0.35 + i * 0.18);
     const hue =
@@ -473,15 +668,16 @@ function drawBreathingCircle(
   audioLevel: number,
   brightnessMultiplier: number,
   breath: number,
+  steadyMode = false,
 ) {
   const cx = w / 2;
   const cy = h / 2;
 
-  // Use shared breath phase (0–1) mapped to radius oscillation
-  const breathPhase = breath * 2 - 1; // remap 0..1 to -1..1
+  const breathPhase = breath * 2 - 1;
 
   const baseRadius = Math.min(w, h) * 0.12;
-  const radius = baseRadius * (0.8 + breathPhase * 0.2 + audioLevel * 0.1);
+  const scaleAmount = steadyMode ? 0.05 : 0.2;
+  const radius = baseRadius * (0.8 + breathPhase * scaleAmount + audioLevel * 0.1);
 
   ctx.save();
   ctx.globalCompositeOperation = "screen";
