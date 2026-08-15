@@ -1,5 +1,5 @@
 const CACHE_VERSION = "regulate-v1";
-const BASE_PATH = "/react-router-starter-template/";
+const BASE_PATH = "/regulate-app/";
 
 const SHELL_ASSETS = [
   BASE_PATH,

@@ -1,6 +1,6 @@
 # Regulate — Technical & Design Review Document
 
-**App URL**: https://lam30ne.github.io/react-router-starter-template/
+**App URL**: https://lam30ne.github.io/regulate-app/
 **Stack**: React 19 + React Router 7 + Tailwind CSS 4 + Web Audio API + Canvas 2D
 **Deployment**: GitHub Pages (static SPA, client-side only)
 
